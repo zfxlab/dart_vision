@@ -11,7 +11,7 @@ namespace {
 void printUsage(const char* program) {
     std::cout << "Usage: " << program << " --config MODELS.yaml\n"
               << "\n"
-              << "Build all enabled PLY model entries from an ordinary YAML file.\n"
+              << "Build all PLY/STL model entries from an ordinary YAML file.\n"
               << "Relative input and output paths are resolved against the YAML directory.\n";
 }
 
@@ -49,16 +49,10 @@ int main(int argc, char** argv) {
         const auto config = dart_vision::lidar::loadModelBuildConfig(config_path);
         const auto report = dart_vision::lidar::buildModels(config);
         for (const auto& model : report.models) {
-            if (model.skipped) {
-                std::cout << "SKIP " << model.name << " (" << model.role << ")\n";
-            } else {
-                std::cout << "BUILT " << model.name << " (" << model.role
-                          << "): " << model.stats.point_count_after_voxel << " points -> "
-                          << model.output_pcd << "\n";
-            }
+            std::cout << "BUILT " << model.name << ": " << model.stats.point_count_after_voxel
+                      << " points -> " << model.output_pcd << "\n";
         }
-        std::cout << "Completed: " << report.built_count << " built, " << report.skipped_count
-                  << " skipped\n";
+        std::cout << "Completed: " << report.built_count << " built\n";
         return EXIT_SUCCESS;
     } catch (const std::exception& error) {
         std::cerr << "model builder error: " << error.what() << "\n";

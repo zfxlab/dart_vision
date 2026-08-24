@@ -1,7 +1,6 @@
 #ifndef DART_VISION_LIDAR_MODEL_MODEL_SAMPLER_HPP
 #define DART_VISION_LIDAR_MODEL_MODEL_SAMPLER_HPP
 
-#include <Eigen/Geometry>
 #include <cstddef>
 #include <cstdint>
 #include <pcl/PolygonMesh.h>
@@ -20,13 +19,7 @@ struct ModelSamplingOptions {
     std::uint32_t seed{0U};
 
     /// Multiplier converting every input mesh coordinate to metres.
-    double input_scale_to_m{1.0};
-
-    /**
- * Rigid transform from the scaled mesh frame to the template frame:
- * p_template_m = t_template_mesh * (input_scale_to_m * p_mesh).
- */
-    Eigen::Isometry3d t_template_mesh{Eigen::Isometry3d::Identity()};
+    double scale_to_m{1.0};
 
     /// VoxelGrid leaf size in metres. Zero disables downsampling.
     double voxel_leaf_size_m{0.0};
@@ -48,8 +41,8 @@ struct ModelSamplingResult {
     ModelSamplingStats stats;
 };
 
-/// Loads a PLY file as a PolygonMesh or throws std::runtime_error.
-pcl::PolygonMesh loadPlyMesh(const std::string& ply_path);
+/// Loads a PLY or STL file as a PolygonMesh. The extension is case-insensitive.
+pcl::PolygonMesh loadMesh(const std::string& mesh_path);
 
 /**
  * Triangulates polygon faces using a fan, removes invalid/degenerate
@@ -59,13 +52,12 @@ pcl::PolygonMesh loadPlyMesh(const std::string& ply_path);
  */
 ModelSamplingResult sampleMesh(const pcl::PolygonMesh& mesh, const ModelSamplingOptions& options);
 
-/// Convenience wrapper around loadPlyMesh() and sampleMesh().
-ModelSamplingResult samplePlyMesh(const std::string& ply_path, const ModelSamplingOptions& options);
+/// Convenience wrapper around loadMesh() and sampleMesh().
+ModelSamplingResult sampleMeshFile(const std::string& mesh_path,
+                                   const ModelSamplingOptions& options);
 
-/// Saves XYZ points to PCD. Throws std::runtime_error on failure.
-void savePcd(const std::string& pcd_path,
-             const pcl::PointCloud<pcl::PointXYZ>& cloud,
-             bool binary = true);
+/// Saves XYZ points to a binary PCD file. Throws std::runtime_error on failure.
+void savePcd(const std::string& pcd_path, const pcl::PointCloud<pcl::PointXYZ>& cloud);
 
 } // namespace dart_vision::lidar
 

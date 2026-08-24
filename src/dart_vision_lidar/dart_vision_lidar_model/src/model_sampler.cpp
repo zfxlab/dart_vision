@@ -1,13 +1,17 @@
 #include "dart_vision_lidar_model/model_sampler.hpp"
 
+#include <Eigen/Core>
 #include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <filesystem>
 #include <limits>
 #include <pcl/common/io.h>
 #include <pcl/conversions.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/io/ply_io.h>
+#include <pcl/io/vtk_lib_io.h>
 #include <random>
 #include <stdexcept>
 #include <utility>
@@ -17,7 +21,6 @@ namespace dart_vision::lidar {
 namespace {
 
 constexpr double kMinimumTriangleAreaM2 = 1.0e-16;
-constexpr double kRotationTolerance = 1.0e-6;
 
 struct Triangle {
     Eigen::Vector3d a;
@@ -34,25 +37,16 @@ void validateOptions(const ModelSamplingOptions& options) {
     if (options.sample_count == 0U) {
         throw std::invalid_argument("sample_count must be greater than zero");
     }
-    if (!std::isfinite(options.input_scale_to_m) || options.input_scale_to_m <= 0.0) {
-        throw std::invalid_argument("input_scale_to_m must be finite and greater than zero");
+    if (!std::isfinite(options.scale_to_m) || options.scale_to_m <= 0.0) {
+        throw std::invalid_argument("scale_to_m must be finite and greater than zero");
     }
     if (!std::isfinite(options.voxel_leaf_size_m) || options.voxel_leaf_size_m < 0.0) {
         throw std::invalid_argument("voxel_leaf_size_m must be finite and non-negative");
     }
-    if (!options.t_template_mesh.matrix().array().isFinite().all()) {
-        throw std::invalid_argument("t_template_mesh must contain only finite values");
-    }
-
-    const Eigen::Matrix3d rotation = options.t_template_mesh.linear();
-    if (!rotation.isUnitary(kRotationTolerance) ||
-        std::abs(rotation.determinant() - 1.0) > kRotationTolerance) {
-        throw std::invalid_argument("t_template_mesh must be a proper rigid transform");
-    }
 }
 
 std::vector<Triangle>
-collectTriangles(const pcl::PolygonMesh& mesh, double input_scale_to_m, ModelSamplingStats& stats) {
+collectTriangles(const pcl::PolygonMesh& mesh, double scale_to_m, ModelSamplingStats& stats) {
     pcl::PointCloud<pcl::PointXYZ> vertices;
     pcl::fromPCLPointCloud2(mesh.cloud, vertices);
     if (vertices.empty()) {
@@ -84,12 +78,9 @@ collectTriangles(const pcl::PolygonMesh& mesh, double input_scale_to_m, ModelSam
             const auto& point_a = vertices[index_a];
             const auto& point_b = vertices[index_b];
             const auto& point_c = vertices[index_c];
-            const Eigen::Vector3d a =
-                input_scale_to_m * Eigen::Vector3d(point_a.x, point_a.y, point_a.z);
-            const Eigen::Vector3d b =
-                input_scale_to_m * Eigen::Vector3d(point_b.x, point_b.y, point_b.z);
-            const Eigen::Vector3d c =
-                input_scale_to_m * Eigen::Vector3d(point_c.x, point_c.y, point_c.z);
+            const Eigen::Vector3d a = scale_to_m * Eigen::Vector3d(point_a.x, point_a.y, point_a.z);
+            const Eigen::Vector3d b = scale_to_m * Eigen::Vector3d(point_b.x, point_b.y, point_b.z);
+            const Eigen::Vector3d c = scale_to_m * Eigen::Vector3d(point_c.x, point_c.y, point_c.z);
 
             if (!isFinite(a) || !isFinite(b) || !isFinite(c)) {
                 ++stats.skipped_invalid_triangle_count;
@@ -116,13 +107,28 @@ collectTriangles(const pcl::PolygonMesh& mesh, double input_scale_to_m, ModelSam
 
 } // namespace
 
-pcl::PolygonMesh loadPlyMesh(const std::string& ply_path) {
-    if (ply_path.empty()) {
-        throw std::invalid_argument("PLY path must not be empty");
+pcl::PolygonMesh loadMesh(const std::string& mesh_path) {
+    if (mesh_path.empty()) {
+        throw std::invalid_argument("mesh path must not be empty");
     }
+
+    std::string extension = std::filesystem::path(mesh_path).extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char value) {
+        return static_cast<char>(std::tolower(value));
+    });
+
     pcl::PolygonMesh mesh;
-    if (pcl::io::loadPLYFile(ply_path, mesh) < 0) {
-        throw std::runtime_error("failed to load PLY mesh: " + ply_path);
+    if (extension == ".ply") {
+        if (pcl::io::loadPLYFile(mesh_path, mesh) < 0) {
+            throw std::runtime_error("failed to load PLY mesh: " + mesh_path);
+        }
+    } else if (extension == ".stl") {
+        if (pcl::io::loadPolygonFileSTL(mesh_path, mesh) <= 0) {
+            throw std::runtime_error("failed to load STL mesh: " + mesh_path);
+        }
+    } else {
+        throw std::invalid_argument("unsupported mesh extension '" + extension +
+                                    "' (expected .ply or .stl): " + mesh_path);
     }
     return mesh;
 }
@@ -132,7 +138,7 @@ ModelSamplingResult sampleMesh(const pcl::PolygonMesh& mesh, const ModelSampling
 
     ModelSamplingResult result;
     const std::vector<Triangle> triangles =
-        collectTriangles(mesh, options.input_scale_to_m, result.stats);
+        collectTriangles(mesh, options.scale_to_m, result.stats);
 
     std::vector<double> cumulative_areas;
     cumulative_areas.reserve(triangles.size());
@@ -160,13 +166,12 @@ ModelSamplingResult sampleMesh(const pcl::PolygonMesh& mesh, const ModelSampling
         // coordinates over triangle area.
         const double root_u = std::sqrt(unit_distribution(random_engine));
         const double v = unit_distribution(random_engine);
-        const Eigen::Vector3d point_mesh_m = (1.0 - root_u) * triangle.a +
-                                             (root_u * (1.0 - v)) * triangle.b +
-                                             (root_u * v) * triangle.c;
-        const Eigen::Vector3d point_template_m = options.t_template_mesh * point_mesh_m;
-        result.cloud->emplace_back(static_cast<float>(point_template_m.x()),
-                                   static_cast<float>(point_template_m.y()),
-                                   static_cast<float>(point_template_m.z()));
+        const Eigen::Vector3d point_m = (1.0 - root_u) * triangle.a +
+                                        (root_u * (1.0 - v)) * triangle.b +
+                                        (root_u * v) * triangle.c;
+        result.cloud->emplace_back(static_cast<float>(point_m.x()),
+                                   static_cast<float>(point_m.y()),
+                                   static_cast<float>(point_m.z()));
     }
 
     result.cloud->width = static_cast<std::uint32_t>(result.cloud->size());
@@ -187,14 +192,12 @@ ModelSamplingResult sampleMesh(const pcl::PolygonMesh& mesh, const ModelSampling
     return result;
 }
 
-ModelSamplingResult samplePlyMesh(const std::string& ply_path,
-                                  const ModelSamplingOptions& options) {
-    return sampleMesh(loadPlyMesh(ply_path), options);
+ModelSamplingResult sampleMeshFile(const std::string& mesh_path,
+                                   const ModelSamplingOptions& options) {
+    return sampleMesh(loadMesh(mesh_path), options);
 }
 
-void savePcd(const std::string& pcd_path,
-             const pcl::PointCloud<pcl::PointXYZ>& cloud,
-             bool binary) {
+void savePcd(const std::string& pcd_path, const pcl::PointCloud<pcl::PointXYZ>& cloud) {
     if (pcd_path.empty()) {
         throw std::invalid_argument("PCD path must not be empty");
     }
@@ -202,9 +205,7 @@ void savePcd(const std::string& pcd_path,
         throw std::invalid_argument("refusing to save an empty point cloud");
     }
 
-    const int status = binary ? pcl::io::savePCDFileBinary(pcd_path, cloud)
-                              : pcl::io::savePCDFileASCII(pcd_path, cloud);
-    if (status < 0) {
+    if (pcl::io::savePCDFileBinary(pcd_path, cloud) < 0) {
         throw std::runtime_error("failed to save PCD cloud: " + pcd_path);
     }
 }

@@ -2,7 +2,7 @@
 <package format="3">
   <name>dart_vision_lidar_model</name>
   <version>0.1.0</version>
-  <description>Offline YAML-driven PLY sampling and PCD generation for dart vision LiDAR models.</description>
+  <description>Offline YAML-driven PLY/STL sampling and PCD generation for dart vision LiDAR models.</description>
   <maintainer email="fzhang859@connect.hkust-gz.edu.cn">pnx</maintainer>
   <license>MIT</license>
 
@@ -11,6 +11,8 @@
   <depend>eigen</depend>
   <depend>libpcl-all-dev</depend>
   <depend>yaml-cpp</depend>
+
+  <test_depend>ament_cmake_gtest</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

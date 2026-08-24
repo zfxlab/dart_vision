@@ -1,50 +1,32 @@
-schema_version: 1
+schema_version: 2
 
 # This is an ordinary yaml-cpp file, not a ROS parameter file. Paths are
-# resolved relative to this file. Keep entries disabled until CAD roles,
-# coordinate frames, units, and output locations have been confirmed.
+# resolved relative to this file. Each PLY or STL mesh must already use its
+# target template frame; scale_to_m is the only coordinate conversion applied.
 models:
   - name: base_open_fixed
-    role: base_open
-    input_ply: ../models/raw/base_pnx.ply
+    input_mesh: ../models/raw/base_pnx.ply
     output_pcd: ../models/processed/base_open_fixed.pcd
-    input_scale_to_m: 0.001
+    scale_to_m: 0.001
     sample_count: 150000
     random_seed: 7001
     voxel_leaf_m: 0.005
-    t_template_mesh:
-      translation_m: [0.0, 0.0, 0.0]
-      quaternion_xyzw: [0.0, 0.0, 0.0, 1.0]
-    pcd_encoding: binary
     overwrite: false
-    enabled: true
 
   - name: base_closed_fixed
-    role: base_closed
-    input_ply: ../models/raw/base_pnx.ply
+    input_mesh: ../models/raw/base_pnx.ply
     output_pcd: ../models/processed/base_closed_fixed.pcd
-    input_scale_to_m: 0.001
+    scale_to_m: 0.001
     sample_count: 150000
     random_seed: 7002
     voxel_leaf_m: 0.005
-    t_template_mesh:
-      translation_m: [0.0, 0.0, 0.0]
-      quaternion_xyzw: [0.0, 0.0, 0.0, 1.0]
-    pcd_encoding: binary
     overwrite: false
-    enabled: true
 
   - name: moving_armor
-    role: armor
-    input_ply: ../models/raw/armor_pnx.ply
+    input_mesh: ../models/raw/armor_pnx.ply
     output_pcd: ../models/processed/moving_armor.pcd
-    input_scale_to_m: 0.001
+    scale_to_m: 0.001
     sample_count: 60000
     random_seed: 7003
     voxel_leaf_m: 0.003
-    t_template_mesh:
-      translation_m: [0.0, 0.0, 0.0]
-      quaternion_xyzw: [0.0, 0.0, 0.0, 1.0]
-    pcd_encoding: binary
     overwrite: false
-    enabled: true
