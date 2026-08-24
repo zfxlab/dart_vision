@@ -1,0 +1,124 @@
+/**:
+  ros__parameters:
+    # 输入可选 pointcloud2 或 livox_custom。节点只订阅所选类型的话题。
+    input_type: "pointcloud2"
+    pointcloud2_topic: "/livox/lidar"
+    livox_custom_topic: "/livox/lidar"
+    result_topic: "mid70_localization"
+
+    # 在线处理统一在 lidar_frame；output_frame 不同时必须提供 t_output_lidar。
+    lidar_frame: "livox_frame"
+    output_frame: "livox_frame"
+    tf_timeout_s: 0.05
+
+    processing:
+      # 输入回调始终累积；后端只按该频率处理最新快照，不排队旧任务。
+      rate_hz: 3.0
+      parallel_base_candidates: true
+
+    model:
+      # launch 默认用 dart_vision_lidar_model 的 package share 路径覆盖这三项。
+      # 直接运行节点时需显式设置；任一项为空或不可读时 valid=false。
+      base_open_pcd: ""
+      base_closed_pcd: ""
+      armor_pcd: ""
+
+    accumulation:
+      time_window_s: 1.0
+      max_frames: 10
+      max_points: 100000
+      clear_on_timestamp_regression: true
+
+    preprocess:
+      min_distance_m: 10.0
+      max_distance_m: 12.0
+      crop_box_enabled: true
+      # CropBox 在 lidar_frame 中，单位为米。
+      crop_box_min_m: [10.25, 0.35, -0.9]
+      crop_box_max_m: [11.25, 1.56, 0.3]
+      crop_box_negative: false
+      voxel_grid_enabled: true
+      voxel_leaf_size_m: [0.005, 0.005, 0.005]
+      statistical_outlier_removal_enabled: true
+      sor_mean_k: 10
+      sor_stddev_mul_threshold: 1.0
+
+    base:
+      # t_lidar_base_initial；RPY 为 Rz(yaw) * Ry(pitch) * Rx(roll)，弧度制。
+      initial_translation_m: [10.8, 1.07, -0.64]
+      initial_rpy_rad: [0.0, 0.0, 1.57079632679]
+      icp_max_iterations: 40
+      icp_max_correspondence_distance_m: 0.15
+      icp_transformation_epsilon: 1.0e-8
+      icp_euclidean_fitness_epsilon: 1.0e-7
+      # 基地 ICP 只优化 x/y/yaw；z 平移及 roll/pitch 固定为 initial 值。
+      max_translation_delta_m: 0.25
+      # 受限配准下该参数实际表示相对 initial 的最大 yaw 修正量。
+      max_rotation_delta_rad: 0.35
+      require_icp_convergence: true
+      min_state_score_margin: 0.04
+
+      metrics:
+        nearest_neighbor_truncation_m: 0.12
+        inlier_distance_m: 0.05
+        max_truncated_rmse_m: 0.09
+        min_inlier_ratio: 0.30
+        min_template_coverage_ratio: 0.03
+        min_score: 0.30
+        min_scene_points: 50
+        residual_score_weight: 0.45
+        inlier_score_weight: 0.35
+        coverage_score_weight: 0.20
+
+      temporal:
+        required_consecutive_frames: 3
+        max_translation_jump_m: 0.08
+        max_rotation_jump_rad: 0.15
+
+    armor:
+      # t_base_armor_zero；运动轴也在 base 坐标系中表达。
+      zero_translation_m: [-0.45, -0.03193, 0.721]
+      zero_rpy_rad: [0.0, 0.0, 0.0]
+      motion_axis_base: [1.0, 0.0, 0.0]
+      min_axis_position_m: 0.0
+      max_axis_position_m: 1.5
+      coarse_step_m: 0.05
+      fine_step_m: 0.005
+      fine_half_window_m: 0.05
+      max_search_candidates: 10000
+      sweep_roi_padding_m: 0.08
+
+      metrics:
+        nearest_neighbor_truncation_m: 0.10
+        inlier_distance_m: 0.04
+        max_truncated_rmse_m: 0.09
+        min_inlier_ratio: 0.20
+        min_template_coverage_ratio: 0.03
+        min_score: 0.15
+        min_scene_points: 15
+        residual_score_weight: 0.45
+        inlier_score_weight: 0.35
+        coverage_score_weight: 0.20
+
+      temporal:
+        required_consecutive_frames: 3
+        max_translation_jump_m: 0.08
+        max_rotation_jump_rad: 0.15
+
+    green:
+      # 绿灯中心在 armor 模板坐标系中的固定偏移，单位为米。
+      offset_armor_m: [0.0, 0.1222, 0.02363]
+
+    debug:
+      accumulated_topic: "debug/accumulated"
+      filtered_topic: "debug/filtered"
+      # Initial 严格使用 YAML 初值；无后缀的模板话题是 ICP/搜索后的候选。
+      base_open_initial_template_topic: "debug/base_open_initial_template"
+      base_closed_initial_template_topic: "debug/base_closed_initial_template"
+      armor_initial_template_topic: "debug/armor_initial_template"
+      base_open_template_topic: "debug/base_open_template"
+      base_closed_template_topic: "debug/base_closed_template"
+      armor_template_topic: "debug/armor_template"
+      base_pose_topic: "debug/base_pose"
+      armor_pose_topic: "debug/armor_pose"
+      markers_topic: "debug/markers"

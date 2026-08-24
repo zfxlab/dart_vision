@@ -7,6 +7,7 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(geometry_msgs REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(std_msgs REQUIRED)
 
@@ -14,7 +15,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/AimCommand.msg"
   "msg/ControllerState.msg"
   "msg/LightDetection.msg"
-  DEPENDENCIES std_msgs
+  "msg/Mid70Localization.msg"
+  DEPENDENCIES geometry_msgs std_msgs
 )
 
 if(BUILD_TESTING)
