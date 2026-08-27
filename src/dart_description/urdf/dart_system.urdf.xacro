@@ -1,0 +1,192 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro"
+  name="dart_system">
+
+  <!-- 场地坐标系：x 右、y 前、z 上 -->
+  <!-- 以场地左下角为原点 -->
+  <link name="field_link">
+    <!-- 薄板顶面与 field_link 的 z=0 平面重合。 -->
+    <visual name="field_area">
+      <origin
+        xyz="7.5 14.0 -0.005"
+        rpy="0.0 0.0 0.0" />
+      <geometry>
+        <box size="15.0 28.0 0.01" />
+      </geometry>
+      <material name="field_area_material">
+        <color rgba="0.3 0.3 0.3 1" />
+      </material>
+    </visual>
+  </link>
+
+  <!-- 基地底座坐标系 -->
+  <!-- 底面中心 -->
+  <link name="base_pedestal_link">
+    <visual name="base_pedestal_area">
+      <origin xyz="0.0 0.0 0.1" rpy="0.0 0.0 0.0"/>
+      <geometry>
+        <cylinder radius="0.9" length="0.2" />
+      </geometry>
+      <material name="base_pedestal_material">
+        <color rgba="0.489 0.489 0.489 1"/>
+      </material>
+    </visual>
+  </link>
+
+  <joint name="field_to_base_pedestal" type="fixed">
+    <parent link="field_link"/>
+    <child link="base_pedestal_link"/>
+
+    <origin xyz="7.5 25.593 0.0" rpy="0.0 0.0 ${-pi / 2}"/>
+  </joint>
+
+  <!-- 飞镖系统底座坐标系 -->
+  <!-- 飞镖系统放置平面投影到底面中心 -->
+  <link name="dart_pedestal_link">
+    <visual name="dart_pedestal_area">
+      <origin xyz="0.0 0.0 0.1025" rpy="0.0 0.0 0.0"/>
+      <geometry>
+        <box size="1.0 0.6 0.205"/>
+      </geometry>
+      <material name="dart_pedestal_material">
+        <color rgba="0.498 0.498 0.498 1"/>
+      </material>
+    </visual>
+  </link>
+
+  <joint name="field_to_dart_pedestal" type="fixed">
+    <parent link="field_link"/>
+    <child link="dart_pedestal_link"/>
+
+    <origin xyz="4.23 0.213 0.0" rpy="0.0 0.0 ${pi / 2}"/>
+  </joint>
+
+  <!-- 镖架机械基准 -->
+  <!-- 发射机构旋转轴与飞镖系统放置平面交点 -->
+  <link name="dart_base_link">
+    <visual>
+      <origin xyz="0.0 0.0 0.091" rpy="0.0 0.0 0.0" />
+      <geometry>
+        <mesh filename="package://dart_description/meshes/dart_link.STL" scale="1 1 1" />
+      </geometry>
+      <material name="aluminum_material">
+        <color rgba="0.75 0.77 0.80 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <joint name="dart_pedestal_to_base" type="fixed">
+    <parent link="dart_pedestal_link" />
+    <child link="dart_base_link" />
+    <origin
+      xyz="0.0 0.0 0.205" rpy="0.0 0.0 0.0" />
+  </joint>
+
+  <!-- 发射机构方向 -->
+  <!-- 电机上方转盘中心 -->
+  <link name="launcher_frame">
+    <visual>
+      <geometry>
+        <mesh filename="package://dart_description/meshes/launcher_frame.STL" scale="1 1 1" />
+      </geometry>
+      <material name="aluminum_material">
+        <color rgba="0.75 0.77 0.80 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <joint name="launcher_yaw_joint" type="revolute">
+    <parent link="dart_base_link" />
+    <child link="launcher_frame" />
+
+    <origin xyz="0.0 0.0 0.091" rpy="0.0 0.0 0.0" />
+    <axis xyz="0 0 1" />
+
+    <limit lower="${-pi / 2}"
+      upper="${pi / 2}"
+      effort="20"
+      velocity="${10 * pi / 3}" />
+  </joint>
+
+  <!-- 飞镖释放坐标 -->
+  <link name="dart_release_frame" />
+
+  <joint name="launcher_to_dart_release" type="fixed">
+    <parent link="launcher_frame" />
+    <child link="dart_release_frame" />
+
+    <origin xyz="0.112 0.0 0.48" rpy="0.0 0.0 0.0" />
+  </joint>
+
+  <!-- 相机机械坐标 -->
+  <!-- 相机方形安装底面中心 -->
+  <link name="camera_mount_link">
+    <visual>
+      <geometry>
+        <mesh filename="package://dart_description/meshes/MV-CA016-10UMUC.STL" scale="1 1 1" />
+      </geometry>
+      <material name="camera_material">
+        <color rgba="0.8 0.8 0.8 1" />
+      </material>
+    </visual>
+    <visual>
+      <origin xyz="0.012 0.0 0.015" rpy="0.0 0.0 0.0" />
+      <geometry>
+        <mesh filename="package://dart_description/meshes/MVL-HF5028M-6MPE.STL" scale="1 1 1" />
+      </geometry>
+      <material name="camera_material">
+        <color rgba="0.8 0.8 0.8 1"/>
+      </material>
+    </visual>
+  </link>
+
+  <joint name="launcher_to_camera_mount" type="fixed">
+    <parent link="launcher_frame" />
+    <child link="camera_mount_link" />
+
+    <origin xyz="0.1 0.0 0.8" rpy="0.0 0.0 0.0" />
+  </joint>
+
+  <!-- 相机光学坐标 -->
+  <link name="camera_optical_frame" />
+
+  <joint name="camera_mount_to_optical" type="fixed">
+    <parent link="camera_mount_link" />
+    <child link="camera_optical_frame" />
+
+    <!-- camera_mount: x前 y左 z上
+         optical:      z前 x右 y下 -->
+    <origin xyz="0.04 0.0 0.015" rpy="${-pi / 2} 0.0 ${-pi / 2}" />
+  </joint>
+
+  <!-- 雷达机械坐标
+       雷达安装底面中心 -->
+  <link name="lidar_mount_link">
+    <visual>
+      <geometry>
+        <mesh filename="package://dart_description/meshes/livox_lidar_Mid-70.STL" scale="1 1 1" />
+      </geometry>
+      <material name="livox_lidar_material">
+        <color rgba="0.85 0.87 0.90 1"/>
+      </material>
+    </visual>
+  </link>
+
+  <joint name="launcher_to_lidar_mount" type="fixed">
+    <parent link="launcher_frame" />
+    <child link="lidar_mount_link" />
+
+    <origin xyz="0.35 0.0 0.42" rpy="0.0 0.0 0.0" />
+  </joint>
+
+  <!-- 雷达测量坐标系 -->
+  <link name="livox_frame" />
+
+  <joint name="lidar_mount_to_livox" type="fixed">
+    <parent link="lidar_mount_link" />
+    <child link="livox_frame" />
+
+    <origin xyz="0.0323 0.0 0.0324" rpy="0.0 0.0 0.0" />
+  </joint>
+
+</robot>
