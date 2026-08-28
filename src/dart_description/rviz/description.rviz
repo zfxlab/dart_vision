@@ -35,6 +35,14 @@ Visualization Manager:
       Frame Timeout: 15
       Frames:
         All Enabled: true
+        armor_link:
+          Value: true
+        base_body_link:
+          Value: true
+        base_link:
+          Value: true
+        base_nominal_link:
+          Value: true
         base_pedestal_link:
           Value: true
         camera_mount_link:
@@ -43,11 +51,15 @@ Visualization Manager:
           Value: true
         dart_base_link:
           Value: true
+        dart_detection_module_link:
+          Value: true
         dart_pedestal_link:
           Value: true
         dart_release_frame:
           Value: true
         field_link:
+          Value: true
+        green_light_link:
           Value: true
         launcher_frame:
           Value: true
@@ -62,8 +74,15 @@ Visualization Manager:
       Show Names: false
       Tree:
         field_link:
-          base_pedestal_link:
-            {}
+          base_nominal_link:
+            base_link:
+              base_pedestal_link:
+                base_body_link:
+                  dart_detection_module_link:
+                    armor_link:
+                      {}
+                    green_light_link:
+                      {}
           dart_pedestal_link:
             dart_base_link:
               launcher_frame:
@@ -95,6 +114,24 @@ Visualization Manager:
         Expand Link Details: false
         Expand Tree: false
         Link Tree Style: Links in Alphabetic Order
+        armor_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        base_body_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        base_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        base_nominal_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
         base_pedestal_link:
           Alpha: 1
           Show Axes: false
@@ -114,6 +151,10 @@ Visualization Manager:
           Show Axes: false
           Show Trail: false
           Value: true
+        dart_detection_module_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
         dart_pedestal_link:
           Alpha: 1
           Show Axes: false
@@ -124,6 +165,11 @@ Visualization Manager:
           Show Axes: false
           Show Trail: false
         field_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        green_light_link:
           Alpha: 1
           Show Axes: false
           Show Trail: false
@@ -196,25 +242,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 14.588496208190918
+      Distance: 6.357049465179443
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 8.114816665649414
-        Y: 1.7180967330932617
-        Z: 1.2937878370285034
+        X: 4.130951881408691
+        Y: 0.23297080397605896
+        Z: 0.2611471116542816
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.5203983187675476
+      Pitch: 0.29979652166366577
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 4.35357141494751
+      Yaw: 4.673580169677734
     Saved: ~
 Window Geometry:
   Displays:

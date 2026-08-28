@@ -2,6 +2,14 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro"
   name="dart_system">
 
+  <!-- 基地现场偏差，均相对于 base_nominal_link 表达。默认值保持图纸位置不变。 -->
+  <xacro:arg name="base_offset_x" default="0.0" />
+  <xacro:arg name="base_offset_y" default="0.0" />
+  <xacro:arg name="base_offset_z" default="0.0" />
+  <xacro:arg name="base_offset_roll" default="0.0" />
+  <xacro:arg name="base_offset_pitch" default="0.0" />
+  <xacro:arg name="base_offset_yaw" default="0.0" />
+
   <!-- 场地坐标系：x 右、y 前、z 上 -->
   <!-- 以场地左下角为原点 -->
   <link name="field_link">
@@ -19,8 +27,28 @@
     </visual>
   </link>
 
-  <!-- 基地底座坐标系 -->
-  <!-- 底面中心 -->
+  <!-- 图纸中的基地理论坐标系。该变换不由现场标定修改。 -->
+  <link name="base_nominal_link" />
+
+  <joint name="field_to_base_nominal" type="fixed">
+    <parent link="field_link"/>
+    <child link="base_nominal_link"/>
+
+    <origin xyz="7.5 25.593 0.0" rpy="0.0 0.0 ${pi}"/>
+  </joint>
+
+  <!-- 现场基地实际坐标系。偏差为零时与理论坐标系重合。 -->
+  <link name="base_link" />
+
+  <joint name="base_nominal_to_base" type="fixed">
+    <parent link="base_nominal_link" />
+    <child link="base_link" />
+    <origin
+      xyz="$(arg base_offset_x) $(arg base_offset_y) $(arg base_offset_z)"
+      rpy="$(arg base_offset_roll) $(arg base_offset_pitch) $(arg base_offset_yaw)" />
+  </joint>
+
+  <!-- 基地底座坐标系：场地上圆形底座的底面中心。 -->
   <link name="base_pedestal_link">
     <visual name="base_pedestal_area">
       <origin xyz="0.0 0.0 0.1" rpy="0.0 0.0 0.0"/>
@@ -33,11 +61,79 @@
     </visual>
   </link>
 
-  <joint name="field_to_base_pedestal" type="fixed">
-    <parent link="field_link"/>
-    <child link="base_pedestal_link"/>
+  <joint name="base_to_base_pedestal" type="fixed">
+    <parent link="base_link" />
+    <child link="base_pedestal_link" />
+    <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+  </joint>
 
-    <origin xyz="7.5 25.593 0.0" rpy="0.0 0.0 ${-pi / 2}"/>
+  <!-- 基地主体。可视化尺寸直接写在此处，后续按官方文件修改。 -->
+  <link name="base_body_link">
+    <visual name="base_body_visual">
+      <origin xyz="0 0.0 0.45" rpy="0.0 0.0 0.0" />
+      <geometry>
+        <cylinder radius="0.5" length="0.9"/>
+      </geometry>
+      <material name="base_body_material">
+        <color rgba="0.36 0.38 0.42 1.0" />
+      </material>
+    </visual>
+  </link>
+
+  <joint name="base_pedestal_to_body" type="fixed">
+    <parent link="base_pedestal_link" />
+    <child link="base_body_link" />
+    <origin xyz="0.0 0.0 0.2" rpy="0.0 0.0 0.0" />
+  </joint>
+
+  <!-- 飞镖检测模块 -->
+  <link name="dart_detection_module_link"/>
+
+  <!-- 模块零位，默认在基地左侧 -->
+  <joint name="dart_detection_module_slide_joint" type="prismatic">
+    <parent link="base_body_link" />
+    <child link="dart_detection_module_link" />
+    <origin xyz="-0.6 0 1.043" rpy="0.0 0.0 0.0" />
+    <axis xyz="1 0 0" />
+    <limit lower="0.0" upper="1.2" effort="1.0" velocity="1.0" />
+  </joint>
+
+  <!-- 发光面直径约 55 mm，中心偏移与当前雷达定位配置保持一致。 -->
+  <link name="green_light_link">
+    <visual name="green_light_visual">
+      <origin xyz="0.0 0.0 0.005" rpy="${-pi / 2} 0.0 0.0" />
+      <geometry>
+        <cylinder radius="0.0275" length="0.01" />
+      </geometry>
+      <material name="green_light_material">
+        <color rgba="0.0 1.0 0.15 1.0" />
+      </material>
+    </visual>
+  </link>
+
+  <joint name="dart_detection_module_to_green_light" type="fixed">
+    <parent link="dart_detection_module_link" />
+    <child link="green_light_link" />
+    <origin xyz="0.0 0.08 0.0" rpy="0.0 0.0 0.0" />
+  </joint>
+
+  <!-- 装甲板模块，中心偏移与当前雷达定位配置保持一致。 -->
+  <link name="armor_link">
+    <visual name="armor_visual">
+      <origin xyz="0.0 0.0 0.005" rpy="0.0 0.0 0.0" />
+      <geometry>
+        <box size="0.14 0.14 0.01"/>
+      </geometry>
+      <material name="armor_material">
+        <color rgba="0.0 1.0 0.15 1.0" />
+      </material>
+    </visual>
+  </link>
+
+  <joint name="dart_detection_module_to_armor" type="fixed">
+    <parent link="dart_detection_module_link" />
+    <child link="armor_link" />
+    <origin xyz="0.0 0.0 0.08" rpy="${-pi / 6} 0.0 0.0" />
   </joint>
 
   <!-- 飞镖系统底座坐标系 -->

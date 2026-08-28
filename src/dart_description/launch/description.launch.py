@@ -8,6 +8,14 @@ from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
     use_sim_time = LaunchConfiguration("use_sim_time")
+    base_offset_names = [
+        "base_offset_x",
+        "base_offset_y",
+        "base_offset_z",
+        "base_offset_roll",
+        "base_offset_pitch",
+        "base_offset_yaw",
+    ]
 
     xacro_file = PathJoinSubstitution(
         [
@@ -17,8 +25,14 @@ def generate_launch_description():
         ]
     )
 
+    xacro_command = ["xacro ", xacro_file]
+    for name in base_offset_names:
+        xacro_command.extend(
+            [" ", name, ":=", LaunchConfiguration(name)]
+        )
+
     robot_description = ParameterValue(
-        Command(["xacro ", xacro_file]),
+        Command(xacro_command),
         value_type=str,
     )
 
@@ -28,6 +42,10 @@ def generate_launch_description():
                 "use_sim_time",
                 default_value="false",
             ),
+            *[
+                DeclareLaunchArgument(name, default_value="0.0")
+                for name in base_offset_names
+            ],
             Node(
                 package="robot_state_publisher",
                 executable="robot_state_publisher",
