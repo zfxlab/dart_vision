@@ -1,0 +1,29 @@
+image_width: 1440
+image_height: 1080
+camera_name: camera
+# prettier-ignore
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [2401.633471,    0.000000, 732.028705,
+            0.000000, 2402.878025, 563.595072,
+            0.000000,    0.000000,   1.000000]
+distortion_model: plumb_bob
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data: [-0.057074, 0.216146, 0.000092, 0.000893, 0.000000]
+# prettier-ignore
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [1.000000, 0.000000, 0.000000,
+         0.000000, 1.000000, 0.000000,
+         0.000000, 0.000000, 1.000000]
+# prettier-ignore
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [2391.743164,    0.000000, 732.143473, 0.000000,
+            0.000000, 2394.985352, 563.191392, 0.000000,
+            0.000000,    0.000000,   1.000000, 0.000000]

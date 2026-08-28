@@ -1,0 +1,31 @@
+defaults:
+  transport: usb
+  output_encoding: rgb8
+  use_sensor_data_qos: true
+  grab_timeout_ms: 1000
+  reconnect_interval_ms: 1000
+  max_consecutive_timeouts: 5
+  sdk_buffer_count: 4
+  auto_exposure: false
+  exposure_time: 3000.0
+  auto_gain: false
+  gain: 0.0
+  frame_rate: 0.0
+  trigger_mode: "off"
+
+cameras:
+  - enabled: true
+    namespace: camera
+    node_name: driver
+    serial_number: 00DA1923275
+    camera_name: camera
+    frame_id: camera_optical_frame
+    camera_info_url: "calibration/00DA1923275.yaml"
+
+  - enabled: false
+    namespace: camera
+    node_name: driver
+    serial_number: 00DA1923281
+    camera_name: camera
+    frame_id: camera_optical_frame
+    camera_info_url: "calibration/00DA1923281.yaml"
