@@ -31,10 +31,10 @@
   <link name="base_nominal_link" />
 
   <joint name="field_to_base_nominal" type="fixed">
-    <parent link="field_link"/>
-    <child link="base_nominal_link"/>
+    <parent link="field_link" />
+    <child link="base_nominal_link" />
 
-    <origin xyz="7.5 25.593 0.0" rpy="0.0 0.0 ${pi}"/>
+    <origin xyz="7.5 25.593 0.0" rpy="0.0 0.0 ${pi}" />
   </joint>
 
   <!-- 现场基地实际坐标系。偏差为零时与理论坐标系重合。 -->
@@ -51,12 +51,12 @@
   <!-- 基地底座坐标系：场地上圆形底座的底面中心。 -->
   <link name="base_pedestal_link">
     <visual name="base_pedestal_area">
-      <origin xyz="0.0 0.0 0.1" rpy="0.0 0.0 0.0"/>
+      <origin xyz="0.0 0.0 0.1" rpy="0.0 0.0 0.0" />
       <geometry>
         <cylinder radius="0.9" length="0.2" />
       </geometry>
       <material name="base_pedestal_material">
-        <color rgba="0.489 0.489 0.489 1"/>
+        <color rgba="0.489 0.489 0.489 1" />
       </material>
     </visual>
   </link>
@@ -72,7 +72,7 @@
     <visual name="base_body_visual">
       <origin xyz="0 0.0 0.45" rpy="0.0 0.0 0.0" />
       <geometry>
-        <cylinder radius="0.5" length="0.9"/>
+        <cylinder radius="0.5" length="0.9" />
       </geometry>
       <material name="base_body_material">
         <color rgba="0.36 0.38 0.42 1.0" />
@@ -86,14 +86,23 @@
     <origin xyz="0.0 0.0 0.2" rpy="0.0 0.0 0.0" />
   </joint>
 
-  <!-- 飞镖检测模块 -->
-  <link name="dart_detection_module_link"/>
+  <!-- 滑轨零位，默认在基地左侧 -->
+  <link name="rail_origin_link" />
 
-  <!-- 模块零位，默认在基地左侧 -->
-  <joint name="dart_detection_module_slide_joint" type="prismatic">
+  <joint name="base_body_to_rail_origin" type="fixed">
     <parent link="base_body_link" />
+    <child link="rail_origin_link" />
+
+    <origin xyz="-0.6 0.0 1.043" rpy="0.0 0.0 0.0" />
+  </joint>
+
+  <!-- 飞镖检测模块运动位置 -->
+  <link name="dart_detection_module_link" />
+
+  <joint name="dart_detection_module_slide_joint" type="prismatic">
+    <parent link="rail_origin_link" />
     <child link="dart_detection_module_link" />
-    <origin xyz="-0.6 0 1.043" rpy="0.0 0.0 0.0" />
+    <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
     <axis xyz="1 0 0" />
     <limit lower="0.0" upper="1.2" effort="1.0" velocity="1.0" />
   </joint>
@@ -122,7 +131,7 @@
     <visual name="armor_visual">
       <origin xyz="0.0 0.0 0.005" rpy="0.0 0.0 0.0" />
       <geometry>
-        <box size="0.14 0.14 0.01"/>
+        <box size="0.14 0.14 0.01" />
       </geometry>
       <material name="armor_material">
         <color rgba="0.0 1.0 0.15 1.0" />
@@ -140,21 +149,21 @@
   <!-- 飞镖系统放置平面投影到底面中心 -->
   <link name="dart_pedestal_link">
     <visual name="dart_pedestal_area">
-      <origin xyz="0.0 0.0 0.1025" rpy="0.0 0.0 0.0"/>
+      <origin xyz="0.0 0.0 0.1025" rpy="0.0 0.0 0.0" />
       <geometry>
-        <box size="1.0 0.6 0.205"/>
+        <box size="1.0 0.6 0.205" />
       </geometry>
       <material name="dart_pedestal_material">
-        <color rgba="0.498 0.498 0.498 1"/>
+        <color rgba="0.498 0.498 0.498 1" />
       </material>
     </visual>
   </link>
 
   <joint name="field_to_dart_pedestal" type="fixed">
-    <parent link="field_link"/>
-    <child link="dart_pedestal_link"/>
+    <parent link="field_link" />
+    <child link="dart_pedestal_link" />
 
-    <origin xyz="4.23 0.213 0.0" rpy="0.0 0.0 ${pi / 2}"/>
+    <origin xyz="4.23 0.213 0.0" rpy="0.0 0.0 ${pi / 2}" />
   </joint>
 
   <!-- 镖架机械基准 -->
@@ -166,7 +175,7 @@
         <mesh filename="package://dart_description/meshes/dart_link.STL" scale="1 1 1" />
       </geometry>
       <material name="aluminum_material">
-        <color rgba="0.75 0.77 0.80 1.0"/>
+        <color rgba="0.75 0.77 0.80 1.0" />
       </material>
     </visual>
   </link>
@@ -186,7 +195,7 @@
         <mesh filename="package://dart_description/meshes/launcher_frame.STL" scale="1 1 1" />
       </geometry>
       <material name="aluminum_material">
-        <color rgba="0.75 0.77 0.80 1.0"/>
+        <color rgba="0.75 0.77 0.80 1.0" />
       </material>
     </visual>
   </link>
@@ -231,7 +240,7 @@
         <mesh filename="package://dart_description/meshes/MVL-HF5028M-6MPE.STL" scale="1 1 1" />
       </geometry>
       <material name="camera_material">
-        <color rgba="0.8 0.8 0.8 1"/>
+        <color rgba="0.8 0.8 0.8 1" />
       </material>
     </visual>
   </link>
@@ -263,7 +272,7 @@
         <mesh filename="package://dart_description/meshes/livox_lidar_Mid-70.STL" scale="1 1 1" />
       </geometry>
       <material name="livox_lidar_material">
-        <color rgba="0.85 0.87 0.90 1"/>
+        <color rgba="0.85 0.87 0.90 1" />
       </material>
     </visual>
   </link>

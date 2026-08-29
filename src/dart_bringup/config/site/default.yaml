@@ -1,0 +1,12 @@
+# true 使用 red，false 使用 blue。修改后需重启 description.launch.py。
+is_red: true
+
+# 两组数据均表示 base_link 在 base_nominal_link 中的位姿。
+# 长度单位为米，角度单位为弧度，rpy 顺序为 roll、pitch、yaw。
+red:
+  xyz_m: [0.0, 0.0, 0.0]
+  rpy_rad: [0.0, 0.0, 0.0]
+
+blue:
+  xyz_m: [0.0, 0.0, 0.0]
+  rpy_rad: [0.0, 0.0, 0.0]
