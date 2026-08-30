@@ -41,8 +41,7 @@ private:
 
     void publishObservation(const std_msgs::msg::Header& header,
                             const GreenLightDetectionResult& result,
-                            const std::optional<cv::Vec3d>& bearing,
-                            bool calibrated);
+                            const std::optional<cv::Vec3d>& bearing);
     void publishStatus(const std_msgs::msg::Header& header, std::uint8_t status_code);
 
     std::string image_topic_;

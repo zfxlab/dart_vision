@@ -1,6 +1,7 @@
 #ifndef DART_CAMERA_GREEN_LIGHT_DETECTOR_HPP
 #define DART_CAMERA_GREEN_LIGHT_DETECTOR_HPP
 
+#include <cstddef>
 #include <opencv2/core.hpp>
 #include <optional>
 #include <vector>
@@ -67,6 +68,7 @@ struct GreenLightCandidate {
 struct GreenLightDetectionResult {
     std::optional<GreenLightCandidate> target;   ///< 最优候选；没有合格候选时为空。
     std::vector<GreenLightCandidate> candidates; ///< 通过全部筛选条件的候选集合。
+    std::size_t contours_count{}; ///< 具备有效轮廓几何量、进入参数筛选的候选数。
     cv::Mat binary_mask; ///< 完成形态学清理后的 CV_8UC1 二值掩膜。
 };
 
@@ -91,13 +93,18 @@ private:
         cv::Mat binary_mask;   ///< HSV 与绿色优势分割结果的并集。
     };
 
+    struct CandidateExtractionResult {
+        std::vector<GreenLightCandidate> accepted_candidates;
+        std::size_t contours_count{};
+    };
+
     [[nodiscard]] cv::Mat normalizeInput(const cv::Mat& image) const;
 
     [[nodiscard]] SegmentationResult makeGreenMask(const cv::Mat& bgr_img) const;
 
     void cleanMask(cv::Mat& mask) const;
 
-    [[nodiscard]] std::vector<GreenLightCandidate>
+    [[nodiscard]] CandidateExtractionResult
     extractCandidates(const cv::Mat& binary_mask, const cv::Mat& green_channel) const;
 
     [[nodiscard]] std::optional<GreenLightCandidate>

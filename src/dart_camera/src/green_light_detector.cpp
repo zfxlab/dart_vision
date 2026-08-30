@@ -257,7 +257,7 @@ void GreenLightDetector::cleanMask(cv::Mat& mask) const {
     }
 }
 
-std::vector<GreenLightCandidate>
+GreenLightDetector::CandidateExtractionResult
 GreenLightDetector::extractCandidates(const cv::Mat& binary_mask,
                                       const cv::Mat& green_channel) const {
     if (binary_mask.empty() || binary_mask.type() != CV_8UC1) {
@@ -382,7 +382,7 @@ GreenLightDetector::extractCandidates(const cv::Mat& binary_mask,
                                                  fit_score});
     }
 
-    return candidates;
+    return CandidateExtractionResult{std::move(candidates), contours.size()};
 }
 
 std::optional<GreenLightCandidate>
@@ -417,13 +417,16 @@ GreenLightDetectionResult GreenLightDetector::detect(const cv::Mat& image) const
 
     cleanMask(segmentation.binary_mask);
 
-    std::vector<GreenLightCandidate> candidates =
+    CandidateExtractionResult extraction =
         extractCandidates(segmentation.binary_mask, segmentation.green_channel);
 
-    std::optional<GreenLightCandidate> target = selectBestCandidate(candidates);
+    std::optional<GreenLightCandidate> target =
+        selectBestCandidate(extraction.accepted_candidates);
 
-    return GreenLightDetectionResult{
-        std::move(target), std::move(candidates), std::move(segmentation.binary_mask)};
+    return GreenLightDetectionResult{std::move(target),
+                                     std::move(extraction.accepted_candidates),
+                                     extraction.contours_count,
+                                     std::move(segmentation.binary_mask)};
 }
 
 } // namespace dart_vision::camera

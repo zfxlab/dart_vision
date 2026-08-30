@@ -2,12 +2,13 @@
 
 #include <algorithm>
 #include <cv_bridge/cv_bridge.h>
+#include <dart_interfaces/msg/detail/camera_observation__struct.hpp>
 #include <functional>
 #include <opencv2/core.hpp>
 #include <stdexcept>
 #include <utility>
 
-#include "dart_camera/observation_status.hpp"
+#include "dart_interfaces/msg/camera_observation.hpp"
 
 namespace dart_vision::camera {
 namespace {
@@ -139,7 +140,7 @@ GreenLightDetectorNode::onParametersChanged(const std::vector<rclcpp::Parameter>
                 return parameterFailure(name + " cannot be changed while the node is running");
             }
 
-// clang-format off
+            // clang-format off
             #define UPDATE_DOUBLE(field, parameter_name)  \
                 if (name == parameter_name) {             \
                     updated.field = parameter.as_double(); \
@@ -236,20 +237,49 @@ void GreenLightDetectorNode::imageCallback(
             bearing = bearing_solver->calculateUnitBearing(result.target->center_px);
         }
 
-        publishObservation(image_msg->header, result, bearing, calibration_matches_image);
+        if (!result.target) {
+            if (result.contours_count == 0U) {
+                RCLCPP_INFO_THROTTLE(
+                    get_logger(), *get_clock(), 2000, "No green-light candidate contour found");
+            } else {
+                RCLCPP_INFO_THROTTLE(get_logger(),
+                                     *get_clock(),
+                                     2000,
+                                     "No target: all %zu green-light candidates were rejected",
+                                     result.contours_count);
+            }
+        } else if (!calibration_matches_image) {
+            RCLCPP_WARN_THROTTLE(
+                get_logger(),
+                *get_clock(),
+                2000,
+                "Target detected, but camera calibration is unavailable or does not match "
+                "the image (image: %ux%u, frame '%s'; calibration: %ux%u, frame '%s')",
+                image_msg->width,
+                image_msg->height,
+                image_msg->header.frame_id.c_str(),
+                calibration_width,
+                calibration_height,
+                calibration_frame_id.c_str());
+        } else if (!bearing) {
+            RCLCPP_ERROR_THROTTLE(get_logger(),
+                                  *get_clock(),
+                                  2000,
+                                  "Target detected, but bearing calculation failed");
+        }
+
+        publishObservation(image_msg->header, result, bearing);
 
         if (publish_debug_mask) {
             debug_mask_publisher_->publish(
                 *cv_bridge::CvImage(image_msg->header, "mono8", result.binary_mask).toImageMsg());
         }
     } catch (const cv_bridge::Exception& error) {
-        publishStatus(image_msg->header,
-                      dart_interfaces::msg::CameraObservation::STATUS_INTERNAL_ERROR);
+        publishStatus(image_msg->header, dart_interfaces::msg::CameraObservation::STATUS_ERROR);
         RCLCPP_WARN_THROTTLE(
             get_logger(), *get_clock(), 2000, "Image conversion failed: %s", error.what());
     } catch (const std::exception& error) {
-        publishStatus(image_msg->header,
-                      dart_interfaces::msg::CameraObservation::STATUS_INTERNAL_ERROR);
+        publishStatus(image_msg->header, dart_interfaces::msg::CameraObservation::STATUS_ERROR);
         RCLCPP_ERROR_THROTTLE(
             get_logger(), *get_clock(), 2000, "Detection failed: %s", error.what());
     }
@@ -302,12 +332,18 @@ void GreenLightDetectorNode::cameraInfoCallback(
 
 void GreenLightDetectorNode::publishObservation(const std_msgs::msg::Header& header,
                                                 const GreenLightDetectionResult& result,
-                                                const std::optional<cv::Vec3d>& bearing,
-                                                const bool calibrated) {
+                                                const std::optional<cv::Vec3d>& bearing) {
     dart_interfaces::msg::CameraObservation message;
     message.header = header;
-    message.status_code =
-        selectObservationStatus(result.target.has_value(), calibrated, bearing.has_value());
+    if (result.contours_count == 0) {
+        message.status_code = dart_interfaces::msg::CameraObservation::STATUS_NO_CONTOUR;
+    } else if (!result.target.has_value()) {
+        message.status_code = dart_interfaces::msg::CameraObservation::STATUS_NO_CANDIDATE;
+    } else if (bearing) {
+        message.status_code = dart_interfaces::msg::CameraObservation::STATUS_OK;
+    } else {
+        message.status_code = dart_interfaces::msg::CameraObservation::STATUS_ERROR;
+    }
     if (bearing) {
         message.bearing.x = (*bearing)[0];
         message.bearing.y = (*bearing)[1];
