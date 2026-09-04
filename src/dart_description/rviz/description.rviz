@@ -37,13 +37,9 @@ Visualization Manager:
         All Enabled: true
         armor_link:
           Value: true
-        base_body_link:
-          Value: true
         base_link:
           Value: true
         base_nominal_link:
-          Value: true
-        base_pedestal_link:
           Value: true
         camera_mount_link:
           Value: true
@@ -67,7 +63,9 @@ Visualization Manager:
           Value: true
         livox_frame:
           Value: true
-      Marker Scale: 1
+        rail_origin_link:
+          Value: true
+      Marker Scale: 0.5
       Name: TF
       Show Arrows: true
       Show Axes: true
@@ -76,13 +74,12 @@ Visualization Manager:
         field_link:
           base_nominal_link:
             base_link:
-              base_pedestal_link:
-                base_body_link:
-                  dart_detection_module_link:
-                    armor_link:
-                      {}
-                    green_light_link:
-                      {}
+              rail_origin_link:
+                dart_detection_module_link:
+                  armor_link:
+                    {}
+                  green_light_link:
+                    {}
           dart_pedestal_link:
             dart_base_link:
               launcher_frame:
@@ -119,24 +116,15 @@ Visualization Manager:
           Show Axes: false
           Show Trail: false
           Value: true
-        base_body_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
         base_link:
           Alpha: 1
           Show Axes: false
           Show Trail: false
+          Value: true
         base_nominal_link:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-        base_pedestal_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
         camera_mount_link:
           Alpha: 1
           Show Axes: false
@@ -155,6 +143,7 @@ Visualization Manager:
           Alpha: 1
           Show Axes: false
           Show Trail: false
+          Value: true
         dart_pedestal_link:
           Alpha: 1
           Show Axes: false
@@ -185,6 +174,10 @@ Visualization Manager:
           Show Trail: false
           Value: true
         livox_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        rail_origin_link:
           Alpha: 1
           Show Axes: false
           Show Trail: false
@@ -242,25 +235,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 6.357049465179443
+      Distance: 3.534757137298584
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 4.130951881408691
-        Y: 0.23297080397605896
-        Z: 0.2611471116542816
+        X: 6.476579666137695
+        Y: 25.694442749023438
+        Z: 0.10031535476446152
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.29979652166366577
+      Pitch: 0.6247967481613159
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 4.673580169677734
+      Yaw: 4.8485798835754395
     Saved: ~
 Window Geometry:
   Displays:

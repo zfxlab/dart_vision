@@ -102,7 +102,7 @@ def _launch_setup(context):
 def generate_launch_description():
     default_site_file = PathJoinSubstitution(
         [
-            FindPackageShare("dart_bringup"),
+            FindPackageShare("dart_description"),
             "config",
             "site",
             "default.yaml",
