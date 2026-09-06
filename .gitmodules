@@ -1,9 +1,9 @@
 [submodule "third_party/hik_camera_driver"]
 	path = third_party/hik_camera_driver
-	url = https://github.com/fzhang859/hik_camera_driver.git
+	url = git@github.com:zfxlab/hik_camera_driver.git
 [submodule "third_party/livox_ros2_driver"]
 	path = third_party/livox_ros2_driver
 	url = https://github.com/Livox-SDK/livox_ros2_driver.git
 [submodule "third_party/dart_description"]
 	path = third_party/dart_description
-	url = git@github.com:fzhang859/dart_description.git
+	url = git@github.com:zfxlab/dart_description.git
