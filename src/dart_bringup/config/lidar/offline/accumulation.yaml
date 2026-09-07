@@ -1,0 +1,20 @@
+/**:
+  ros__parameters:
+    # 按消息源时间分窗；rosbag 倍速、降速或暂停不会改变窗口覆盖范围。
+    mode: bag_offline
+    input_topic: lidar/preprocessed
+    output_topic: lidar/offline/accumulated
+    accumulation_frame: base_nominal_link
+
+    transform:
+      crop_box_enabled: true
+      crop_box_min_m: [-2.0, -2.0, -0.5]
+      crop_box_max_m: [2.0, 2.0, 2.5]
+
+    accumulation:
+      duration_s: 10.0
+      min_frames: 20
+      max_frames: 400
+      max_points: 2000000
+      output_voxel_grid_enabled: true
+      output_voxel_leaf_size_m: 0.01

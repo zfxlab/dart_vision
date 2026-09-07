@@ -1,0 +1,33 @@
+/**:
+  ros__parameters:
+    mode: triggered_online
+    input_topic: lidar/preprocessed
+    output_topic: lidar/debug/accumulated
+    controller_state_topic: controller_state
+    accumulation_frame: base_link
+
+    # 当前电控上行没有显式 yaw_stable，因此使用主机接收时刻下的 yaw 滑动窗口自动判稳。
+    # 60ms 判稳 + 70ms 跨包保护，对应 20Hz 点云的 50ms 打包跨度和 20ms 余量。
+    stability:
+      hold_s: 0.06
+      yaw_span_rad: 0.001745
+      abort_yaw_deviation_rad: 0.001745
+      controller_timeout_s: 0.20
+      post_stable_delay_s: 0.07
+      measurement_deadline_s: 1.0
+      # 在 1s 截止前为后续粗配准、细配准预留 400ms。
+      localization_reserve_s: 0.40
+
+    transform:
+      crop_box_enabled: true
+      # 使用 yaw 稳定后冻结的 base_nominal_link <- livox_frame 变换。
+      crop_box_min_m: [-1.5, -1.5, -0.5]
+      crop_box_max_m: [1.5, 1.5, 2.0]
+
+    accumulation:
+      duration_s: 0.35
+      min_frames: 6
+      max_frames: 8
+      max_points: 100000
+      output_voxel_grid_enabled: true
+      output_voxel_leaf_size_m: 0.01

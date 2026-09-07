@@ -1,0 +1,10 @@
+/**:
+  ros__parameters:
+    # 使用 Livox CustomMsg，保留 timebase 和逐点 offset_time。
+    xfer_format: 1
+    multi_topic: 0
+    data_src: 0
+    publish_freq: 20.0
+    output_data_type: 0
+    frame_id: livox_frame
+
