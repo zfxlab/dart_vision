@@ -2,6 +2,7 @@
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
@@ -9,6 +10,7 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
+    start_driver = LaunchConfiguration("start_driver")
     cameras_file = LaunchConfiguration("cameras_file")
     green_light_detector_params_file = LaunchConfiguration("green_light_detector_params_file")
     green_light_detector_namespace = LaunchConfiguration("green_light_detector_namespace")
@@ -36,6 +38,7 @@ def generate_launch_description():
                 ]
             )
         ),
+        condition=IfCondition(start_driver),
         launch_arguments={"cameras_file": cameras_file}.items(),
     )
 
@@ -51,6 +54,11 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
+            DeclareLaunchArgument(
+                "start_driver",
+                default_value="true",
+                description="Start camera drivers; disable for recorded or external images",
+            ),
             DeclareLaunchArgument(
                 "cameras_file",
                 default_value=default_cameras_file,
