@@ -15,6 +15,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/AimCommand.msg"
   "msg/ControllerState.msg"
   "msg/CameraObservation.msg"
+  "msg/LidarObservation.msg"
+  "msg/TargetEstimation.msg"
   DEPENDENCIES geometry_msgs std_msgs builtin_interfaces
 )
 

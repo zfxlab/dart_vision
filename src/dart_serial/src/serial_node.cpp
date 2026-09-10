@@ -67,7 +67,6 @@ void SerialNode::declareParameters() {
     declare_parameter<std::string>("receive_topic", "controller_state");
     declare_parameter<std::string>("joint_state_topic", "joint_states");
     declare_parameter<std::string>("yaw_joint_name", "launcher_yaw_joint");
-    declare_parameter<double>("yaw_transport_delay_s", 0.0);
 }
 
 SerialConfig SerialNode::readSerialConfig() const {

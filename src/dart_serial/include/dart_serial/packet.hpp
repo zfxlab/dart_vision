@@ -17,7 +17,6 @@ inline constexpr std::uint8_t kSendPacketHeader = 0xA5;
 struct ReceivePacket {
     std::uint8_t header{kReceivePacketHeader};
     std::uint8_t target_id{}; ///< 0前哨站 1固定 2随机固定 3随机移动 4末端移动
-    std::uint8_t dart_id{};   ///< 4发飞镖编号
     float offset_rad{};       ///< 飞镖的偏转角
     float yaw_rad{};          ///< yaw轴电机位置
     std::uint16_t crc{};
@@ -28,25 +27,22 @@ struct ReceivePacket {
  */
 struct SendPacket {
     std::uint8_t header{kSendPacketHeader};
-    std::uint8_t target_state{}; ///< 目标状态
-    std::uint8_t stable{};       ///< 0不稳定，1稳定
-    float yaw_rad{};             ///< 预期到达的偏转角
-    float distance_m{};          ///< 飞镖释放位置与装甲板中心距离
+    std::uint8_t state{}; ///< 目标状态
+    float yaw_rad{};      ///< 加上offset后的相对偏转,与目标瞄准方向的偏角
+    float distance_m{};   ///< 飞镖...与装甲板中心距离(待定)
     std::uint16_t crc{};
 } __attribute__((packed));
 
-static_assert(sizeof(ReceivePacket) == 13, "ReceivePacket protocol size mismatch");
+static_assert(sizeof(ReceivePacket) == 12, "ReceivePacket protocol size mismatch");
 static_assert(offsetof(ReceivePacket, target_id) == 1, "ReceivePacket target_id offset mismatch");
-static_assert(offsetof(ReceivePacket, dart_id) == 2, "ReceivePacket dart_id offset mismatch");
-static_assert(offsetof(ReceivePacket, offset_rad) == 3, "ReceivePacket offset_rad field mismatch");
-static_assert(offsetof(ReceivePacket, yaw_rad) == 7, "ReceivePacket yaw_rad offset mismatch");
-static_assert(offsetof(ReceivePacket, crc) == 11, "ReceivePacket CRC offset mismatch");
-static_assert(sizeof(SendPacket) == 13, "SendPacket protocol size mismatch");
-static_assert(offsetof(SendPacket, target_state) == 1, "SendPacket target_state offset mismatch");
-static_assert(offsetof(SendPacket, stable) == 2, "SendPacket stable offset mismatch");
-static_assert(offsetof(SendPacket, yaw_rad) == 3, "SendPacket yaw_rad offset mismatch");
-static_assert(offsetof(SendPacket, distance_m) == 7, "SendPacket distance_m offset mismatch");
-static_assert(offsetof(SendPacket, crc) == 11, "SendPacket CRC offset mismatch");
+static_assert(offsetof(ReceivePacket, offset_rad) == 2, "ReceivePacket offset_rad field mismatch");
+static_assert(offsetof(ReceivePacket, yaw_rad) == 6, "ReceivePacket yaw_rad offset mismatch");
+static_assert(offsetof(ReceivePacket, crc) == 10, "ReceivePacket CRC offset mismatch");
+static_assert(sizeof(SendPacket) == 12, "SendPacket protocol size mismatch");
+static_assert(offsetof(SendPacket, state) == 1, "SendPacket state offset mismatch");
+static_assert(offsetof(SendPacket, yaw_rad) == 2, "SendPacket yaw_rad offset mismatch");
+static_assert(offsetof(SendPacket, distance_m) == 6, "SendPacket distance_m offset mismatch");
+static_assert(offsetof(SendPacket, crc) == 10, "SendPacket CRC offset mismatch");
 
 /**
  * @brief 串口协议包类型。

@@ -2,6 +2,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -9,6 +10,7 @@ def generate_launch_description():
     params_file = LaunchConfiguration("params_file")
     namespace = LaunchConfiguration("namespace")
     node_name = LaunchConfiguration("node_name")
+    use_sim_time = LaunchConfiguration("use_sim_time")
 
     default_params_file = PathJoinSubstitution(
         [FindPackageShare("dart_serial"), "config", "serial.yaml"]
@@ -31,6 +33,7 @@ def generate_launch_description():
                 default_value="serial_node",
                 description="Serial node name",
             ),
+            DeclareLaunchArgument("use_sim_time", default_value="false"),
             Node(
                 package="dart_serial",
                 executable="serial_node",
@@ -38,7 +41,10 @@ def generate_launch_description():
                 name=node_name,
                 output="screen",
                 emulate_tty=True,
-                parameters=[params_file],
+                parameters=[
+                    params_file,
+                    {"use_sim_time": ParameterValue(use_sim_time, value_type=bool)},
+                ],
             ),
         ]
     )
