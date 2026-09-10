@@ -20,6 +20,7 @@ find_package(pcl_conversions REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_eigen REQUIRED)
 find_package(tf2_ros REQUIRED)
@@ -28,17 +29,15 @@ find_package(yaml-cpp REQUIRED)
 add_library(
   dart_lidar_localization_core SHARED
   src/localization_types.cpp
-  src/base/base_registrar.cpp
-  src/base/base_validator.cpp
-  src/base/cloud_pyramid.cpp
-  src/base/gicp_registrar.cpp
-  src/base/ndt_registrar.cpp
+  src/calibration/base_registrar.cpp
+  src/calibration/base_validator.cpp
+  src/calibration/cloud_pyramid.cpp
+  src/calibration/gicp_registrar.cpp
+  src/calibration/ndt_registrar.cpp
   src/io/model_loader.cpp
-  src/io/result_writer.cpp
+  src/calibration/result_writer.cpp
   src/module/module_validator.cpp
   src/module/rail_module_localizer.cpp
-  src/module/temporal_tracker.cpp
-  src/pipeline/localization_pipeline.cpp
 )
 target_include_directories(
   dart_lidar_localization_core
@@ -51,32 +50,17 @@ target_link_libraries(dart_lidar_localization_core Eigen3::Eigen yaml-cpp ${PCL_
 target_compile_definitions(dart_lidar_localization_core PRIVATE ${PCL_DEFINITIONS})
 ament_target_dependencies(dart_lidar_localization_core ament_index_cpp)
 
-add_executable(
-  lidar_localization_node
-  src/ros/lidar_localization_main.cpp
-  src/ros/lidar_localization_node.cpp
-)
-target_include_directories(
-  lidar_localization_node
-  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${PCL_INCLUDE_DIRS}
-)
-target_link_libraries(lidar_localization_node dart_lidar_localization_core)
-target_compile_definitions(lidar_localization_node PRIVATE ${PCL_DEFINITIONS})
-ament_target_dependencies(
-  lidar_localization_node
-  dart_interfaces
-  geometry_msgs
-  pcl_conversions
-  rclcpp
-  sensor_msgs
-  std_msgs
-  tf2
-  tf2_eigen
-  tf2_ros
-)
+foreach(node module_localization base_calibration)
+  add_executable(${node}_node src/ros/${node}_main.cpp src/ros/${node}_node.cpp)
+  target_include_directories(${node}_node PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${PCL_INCLUDE_DIRS})
+  target_link_libraries(${node}_node dart_lidar_localization_core)
+  target_compile_definitions(${node}_node PRIVATE ${PCL_DEFINITIONS})
+  ament_target_dependencies(${node}_node
+    dart_interfaces geometry_msgs pcl_conversions rclcpp sensor_msgs std_msgs std_srvs tf2 tf2_eigen tf2_ros)
+endforeach()
 
 install(
-  TARGETS dart_lidar_localization_core lidar_localization_node
+  TARGETS dart_lidar_localization_core module_localization_node base_calibration_node
   EXPORT dart_lidar_localization_targets
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
@@ -95,6 +79,9 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_module_localization test/test_module_localization.cpp)
   target_link_libraries(test_module_localization dart_lidar_localization_core)
+
+  ament_add_gtest(test_calibration_export test/test_calibration_export.cpp)
+  target_link_libraries(test_calibration_export dart_lidar_localization_core)
 endif()
 
 ament_package()

@@ -1,0 +1,25 @@
+/**:
+  ros__parameters:
+    input_topic: lidar/preprocessed
+    output_topic: lidar/accumulated
+    accumulation_frame: base_nominal_link
+
+    transform:
+      crop_box_enabled: true
+      crop_box_min_m: [-2.0, -2.0, -0.5]
+      crop_box_max_m: [2.0, 2.0, 2.5]
+
+    # 持续保留最近的有限窗口；发布后不清空，旧帧按时间和帧数淘汰。
+    accumulation:
+      window_duration_s: 1.2
+      min_frames: 20
+      max_frames: 24
+      max_points: 200000
+      output_voxel_grid_enabled: false
+      output_voxel_leaf_size_m: 0.015
+
+    # 首次达到min_frames立即发布；之后同时满足频率和新增帧数要求才发布。
+    publish:
+      rate_hz: 2.0
+      min_new_frames: 8
+      immediately_when_ready: true

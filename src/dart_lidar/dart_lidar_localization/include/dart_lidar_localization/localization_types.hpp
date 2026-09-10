@@ -102,19 +102,18 @@ struct BaseRegistrationResult {
 };
 
 struct ModuleLocalizationParameters {
-    bool enabled{true};
     double min_position_m{0.0};
-    double max_position_m{1.2};
-    double coarse_step_m{0.01};
-    double fine_step_m{0.001};
+    double max_position_m{0.56};
+    double coarse_step_m{0.005};
+    double fine_step_m{0.0005};
     double fine_half_window_m{0.02};
     double max_correspondence_distance_m{0.025};
     double max_rmse_m{0.015};
     double min_overlap_ratio{0.30};
     std::size_t min_correspondences{10U};
     Eigen::Vector3d roi_padding_m{0.03, 0.03, 0.03};
-    // <= 0表示不在LiDAR层做跨测量跳变判断，交给target_estimation。
-    double max_position_jump_m{0.0};
+    double ambiguity_separation_m{0.03};
+    double min_objective_gap_m{0.001};
 };
 
 struct ModuleLocalizationMetrics {
@@ -126,15 +125,10 @@ struct ModuleLocalizationMetrics {
 
 struct ModuleLocalizationResult {
     bool available{false};
+    bool has_candidate{false};
     std::string message;
     double position_m{0.0};
     ModuleLocalizationMetrics metrics;
-};
-
-struct LocalizationResult {
-    BaseRegistrationResult base;
-    Eigen::Isometry3d reference_from_base{Eigen::Isometry3d::Identity()};
-    ModuleLocalizationResult module;
 };
 
 [[nodiscard]] const char* baseStatusMessage(BaseRegistrationStatus status) noexcept;

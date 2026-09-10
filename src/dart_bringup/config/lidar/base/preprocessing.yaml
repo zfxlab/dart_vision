@@ -1,0 +1,22 @@
+/**:
+  ros__parameters:
+    input_topic: /livox/lidar
+    output_topic: lidar/preprocessed
+    target_frame: base_nominal_link
+
+    # 距离在雷达原始坐标系中判断。
+    min_distance_m: 24.0
+    max_distance_m: 27.0
+
+    # 先完成运动补偿，再在基地附近体素化，避免大坐标下的VoxelGrid溢出。
+    voxel_grid_enabled: false
+    voxel_leaf_size_m: 0.01
+
+    motion_compensation:
+      # 每个点使用 TF(t_point + yaw_query_offset_s)。
+      # 正值表示为该雷达点选用时间更晚的yaw，应通过实验标定。
+      yaw_query_offset_s: 0.0
+      # 同一时间片内的点复用一个TF，控制精度与CPU开销。
+      time_bin_s: 0.002
+      tf_wait_timeout_s: 0.15
+      max_pending_clouds: 8

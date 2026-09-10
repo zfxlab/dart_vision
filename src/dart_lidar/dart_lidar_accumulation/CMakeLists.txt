@@ -20,7 +20,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(ament_cmake REQUIRED)
 find_package(builtin_interfaces REQUIRED)
-find_package(dart_interfaces REQUIRED)
 find_package(
   Eigen3
   REQUIRED
@@ -31,9 +30,6 @@ find_package(pcl_conversions REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rcl_interfaces REQUIRED)
 find_package(sensor_msgs REQUIRED)
-find_package(tf2 REQUIRED)
-find_package(tf2_eigen REQUIRED)
-find_package(tf2_ros REQUIRED)
 
 add_executable(
   lidar_accumulator_node
@@ -57,14 +53,10 @@ target_compile_definitions(
 ament_target_dependencies(
   lidar_accumulator_node
   builtin_interfaces
-  dart_interfaces
   pcl_conversions
   rclcpp
   rcl_interfaces
   sensor_msgs
-  tf2
-  tf2_eigen
-  tf2_ros
 )
 
 install(TARGETS lidar_accumulator_node DESTINATION lib/${PROJECT_NAME})

@@ -3,17 +3,21 @@
 <package format="3">
   <name>dart_lidar_preprocessing</name>
   <version>0.1.0</version>
-  <description>Livox decoding and single-frame point-cloud preprocessing for the dart system.</description>
+  <description>Timestamp-aware Livox motion compensation and point-cloud preprocessing.</description>
   <maintainer email="fzhang859@connect.hkust-gz.edu.cn">pnx</maintainer>
   <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
+  <depend>eigen</depend>
   <depend>libpcl-all-dev</depend>
   <depend>livox_interfaces</depend>
   <depend>pcl_conversions</depend>
   <depend>rclcpp</depend>
   <depend>sensor_msgs</depend>
+  <depend>tf2</depend>
+  <depend>tf2_eigen</depend>
+  <depend>tf2_ros</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

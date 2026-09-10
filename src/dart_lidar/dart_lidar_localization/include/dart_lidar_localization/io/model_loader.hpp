@@ -1,9 +1,9 @@
 #ifndef DART_LIDAR_LOCALIZATION_IO_MODEL_LOADER_HPP
 #define DART_LIDAR_LOCALIZATION_IO_MODEL_LOADER_HPP
 
-#include "dart_lidar_localization/localization_types.hpp"
-
 #include <string>
+
+#include "dart_lidar_localization/localization_types.hpp"
 
 namespace dart_vision::lidar::localization {
 

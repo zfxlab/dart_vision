@@ -10,6 +10,7 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <exec_depend>dart_description</exec_depend>
+  <exec_depend>dart_serial</exec_depend>
 
   <exec_depend>hik_camera_driver</exec_depend>
   <exec_depend>dart_camera</exec_depend>

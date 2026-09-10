@@ -15,14 +15,14 @@ bool ModuleValidator::accept(const ModuleLocalizationResult& result,
                result.position_m > parameters.max_position_m) {
         output << "module position is outside the rail limits";
     } else if (result.metrics.rmse_m > parameters.max_rmse_m) {
-        output << "module rmse " << result.metrics.rmse_m << "m exceeds "
-               << parameters.max_rmse_m << "m";
+        output << "module rmse " << result.metrics.rmse_m << "m exceeds " << parameters.max_rmse_m
+               << "m";
     } else if (result.metrics.overlap_ratio < parameters.min_overlap_ratio) {
         output << "module overlap " << result.metrics.overlap_ratio << " is below "
                << parameters.min_overlap_ratio;
     } else if (result.metrics.correspondence_count < parameters.min_correspondences) {
-        output << "module correspondences " << result.metrics.correspondence_count
-               << " is below " << parameters.min_correspondences;
+        output << "module correspondences " << result.metrics.correspondence_count << " is below "
+               << parameters.min_correspondences;
     } else {
         reason.clear();
         return true;

@@ -7,20 +7,6 @@
 
 namespace dart_vision::lidar {
 
-enum class RuntimeMode { kTriggeredOnline, kBagOffline };
-
-struct StabilityConfig {
-    double hold_s{0.06};
-    double yaw_span_rad{0.001745};
-    double abort_yaw_deviation_rad{0.001745};
-    double controller_timeout_s{0.2};
-    double post_stable_delay_s{0.07};
-    double measurement_deadline_s{1.0};
-    double localization_reserve_s{0.4};
-
-    [[nodiscard]] std::string validationError() const;
-};
-
 struct TransformConfig {
     bool crop_box_enabled{true};
     Eigen::Vector3f crop_box_min_m{-1.5F, -1.5F, -0.5F};
@@ -30,26 +16,31 @@ struct TransformConfig {
 };
 
 struct AccumulationConfig {
-    double duration_s{0.35};
-    std::size_t min_frames{6U};
-    std::size_t max_frames{8U};
+    double window_duration_s{0.60};
+    std::size_t min_frames{10U};
+    std::size_t max_frames{12U};
     std::size_t max_points{100000U};
     bool output_voxel_grid_enabled{true};
-    double output_voxel_leaf_size_m{0.01};
+    double output_voxel_leaf_size_m{0.015};
+
+    [[nodiscard]] std::string validationError() const;
+};
+
+struct PublishConfig {
+    double rate_hz{2.0};
+    std::size_t min_new_frames{8U};
+    bool immediately_when_ready{true};
 
     [[nodiscard]] std::string validationError() const;
 };
 
 struct LidarAccumulatorConfig {
-    RuntimeMode mode{RuntimeMode::kTriggeredOnline};
-    std::string mode_name{"triggered_online"};
     std::string input_topic{"lidar/preprocessed"};
-    std::string output_topic{"debug/lidar_accumulated"};
-    std::string controller_state_topic{"controller_state"};
+    std::string output_topic{"lidar/accumulated"};
     std::string accumulation_frame{"base_nominal_link"};
-    StabilityConfig stability;
     TransformConfig transform;
     AccumulationConfig accumulation;
+    PublishConfig publish;
 
     [[nodiscard]] std::string validationError() const;
 };

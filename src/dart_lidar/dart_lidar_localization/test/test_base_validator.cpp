@@ -1,6 +1,6 @@
-#include "dart_lidar_localization/base/base_validator.hpp"
-
 #include <gtest/gtest.h>
+
+#include "dart_lidar_localization/calibration/base_validator.hpp"
 
 namespace dart_vision::lidar::localization {
 namespace {

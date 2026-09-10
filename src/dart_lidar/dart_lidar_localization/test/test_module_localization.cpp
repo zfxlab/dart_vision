@@ -1,6 +1,7 @@
-#include "dart_lidar_localization/module/rail_module_localizer.hpp"
-
 #include <gtest/gtest.h>
+#include <pcl/common/transforms.h>
+
+#include "dart_lidar_localization/module/rail_module_localizer.hpp"
 
 namespace dart_vision::lidar::localization {
 namespace {
@@ -49,6 +50,56 @@ TEST(RailModuleLocalizer, RecoversPrismaticJointPosition) {
     ASSERT_TRUE(result.available) << result.message;
     EXPECT_NEAR(result.position_m, expected_position_m, 0.0011);
     EXPECT_GE(result.metrics.overlap_ratio, 0.9);
+}
+
+TEST(RailModuleLocalizer, UsesFixedReferenceTransformWithoutBaseRegistration) {
+    const auto model = makeModuleModel();
+    ModuleLocalizationParameters parameters;
+    parameters.min_overlap_ratio = 0.9;
+    parameters.max_rmse_m = 0.006;
+    RailModuleLocalizer localizer(parameters, model);
+    Eigen::Isometry3d reference_from_rail = Eigen::Isometry3d::Identity();
+    reference_from_rail.translation() = Eigen::Vector3d(0.27, -0.15, 0.91);
+    reference_from_rail.linear() =
+        Eigen::AngleAxisd(0.17, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+    // 每次从全轨搜索：大幅移动也不受上一次结果限制，且不足500点仍能定位模块。
+    for (double q : {0.08, 0.48}) {
+        PointCloud rail = *model;
+        for (auto& point : rail) {
+            point.x += static_cast<float>(q);
+        }
+        PointCloud::Ptr reference(new PointCloud);
+        pcl::transformPointCloud(rail, *reference, reference_from_rail.matrix().cast<float>());
+        const auto result = localizer.locate(reference, reference_from_rail);
+        ASSERT_TRUE(result.available) << result.message;
+        EXPECT_NEAR(result.position_m, q, 0.001);
+    }
+}
+
+TEST(RailModuleLocalizer, RejectsTwoSeparatedIdenticalTargets) {
+    const auto model = makeModuleModel();
+    PointCloud::Ptr observation(new PointCloud);
+    for (double q : {0.10, 0.40}) {
+        for (auto point : *model) {
+            point.x += static_cast<float>(q);
+            observation->push_back(point);
+        }
+    }
+    RailModuleLocalizer localizer(ModuleLocalizationParameters{}, model);
+    const auto result = localizer.locate(observation, Eigen::Isometry3d::Identity());
+    EXPECT_TRUE(result.has_candidate);
+    EXPECT_FALSE(result.available);
+    EXPECT_NE(result.message.find("ambiguous"), std::string::npos);
+}
+
+TEST(RailModuleLocalizer, TooFewObservedPointsDoNotBecomeModelCorrespondences) {
+    const auto model = makeModuleModel();
+    PointCloud::Ptr observation(new PointCloud);
+    observation->push_back(model->front());
+    RailModuleLocalizer localizer(ModuleLocalizationParameters{}, model);
+    const auto result = localizer.locate(observation, Eigen::Isometry3d::Identity());
+    EXPECT_FALSE(result.available);
+    EXPECT_FALSE(result.has_candidate);
 }
 
 } // namespace
