@@ -1,23 +1,16 @@
-# TargetEstimate.msg
-
 std_msgs/Header header
-
-# 目标检测状态
-uint8 STATUS_OK=0
-uint8 STATUS_NO_TARGET=1
-uint8 STATUS_UNKOWN=2
-uint8 STATUS_DOOR_CLOSE=3
-
-uint8 target_state
-
-# 基地中心偏转绝对角度
-float32 base_yaw_rad
-
-# 绿灯中心偏转像素角
-float32 light_yaw_rad
-
-# 装甲板中心偏转角
-float32 armor_yaw_rad
-
-# 飞镖释放位置与装甲板中心距离
-float32 distance_m
+uint64 epoch
+uint32 reference_revision
+uint8 visibility
+uint8 base_source
+bool base_valid
+geometry_msgs/Point base_center
+geometry_msgs/Point center_light
+uint8 NONE=0
+uint8 LIDAR=1
+uint8 CAMERA_GEOMETRY=2
+bool light_valid
+uint8 light_source
+builtin_interfaces/Time light_stamp
+geometry_msgs/Point light_center
+bool sensor_conflict

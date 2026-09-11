@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
-    # 使用 Livox CustomMsg，保留 timebase 和逐点 offset_time。
-    xfer_format: 1
+    # PointCloud2: fixed lidar requires no yaw motion compensation.
+    xfer_format: 0
     multi_topic: 0
     data_src: 0
     publish_freq: 20.0

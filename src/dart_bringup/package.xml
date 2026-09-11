@@ -16,9 +16,9 @@
   <exec_depend>dart_camera</exec_depend>
 
   <exec_depend>livox_ros2_driver</exec_depend>
-  <exec_depend>dart_lidar_accumulation</exec_depend>
-  <exec_depend>dart_lidar_localization</exec_depend>
-  <exec_depend>dart_lidar_preprocessing</exec_depend>
+  <exec_depend>dart_lidar</exec_depend>
+  <exec_depend>dart_target_estimation</exec_depend>
+  <exec_depend>dart_aiming</exec_depend>
 
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>

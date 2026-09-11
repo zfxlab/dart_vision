@@ -23,7 +23,7 @@ namespace dart_vision::serial {
 /**
  * @brief 连接 ROS2 消息系统与纯 C++ 串口协议栈的节点。
  *
- * 节点订阅 AimCommand，将物理量缩放为协议整数并通过串口发送；接收线程从串口读取字节，
+ * 节点订阅 AimCommand，将浮点物理量按固定协议通过串口发送；接收线程从串口读取字节，
  * 经过 PacketParser 分帧和 packet 解码后发布 ControllerState。SerialPort、CRC 和协议解析
  * 均保持 ROS2 无关，参数、日志、话题以及断线重连由本类负责。
  */
@@ -56,6 +56,8 @@ private:
     std::unique_ptr<SerialPort> serial_port_;
     PacketParser packet_parser_;
 
+    std::atomic<double> last_command_received_{-1.0};
+    rclcpp::TimerBase::SharedPtr command_watchdog_;
     std::atomic_bool running_{false};
     std::atomic_bool connected_{false};
     std::atomic_bool reconnect_requested_{false};

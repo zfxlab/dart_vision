@@ -5,6 +5,10 @@
     observation_topic: observation
     debug_mask_topic: "~/debug/mask"
     publish_debug_mask: true
+    image_timeout_s: 0.3
+    association_radius_px: 80.0
+    ambiguity_margin: 0.05
+    confirmation_frames: 3
 
     segmentation:
       min_hue: 35.0

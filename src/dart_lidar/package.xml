@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <package format="3">
-  <name>dart_aiming</name>
+  <name>dart_lidar</name>
   <version>0.1.0</version>
   <description>Dart launcher perception and control pipeline.</description>
   <maintainer email="fzhang859@connect.hkust-gz.edu.cn">pnx</maintainer>
@@ -8,10 +8,12 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
   <buildtool_depend>ament_cmake_python</buildtool_depend>
   <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>sensor_msgs_py</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
   <exec_depend>dart_interfaces</exec_depend>
-  <exec_depend>dart_target_estimation</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-scipy</exec_depend>
   <test_depend>ament_cmake_pytest</test_depend>
   <export>
     <build_type>ament_cmake</build_type>

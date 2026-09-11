@@ -1,0 +1,10 @@
+std_msgs/Header header
+uint8 PRIOR=0
+uint8 MEASURED=1
+uint64 epoch
+uint32 revision
+uint8 source
+bool finalized
+geometry_msgs/Pose pose
+float32 rmse_m
+float32 support

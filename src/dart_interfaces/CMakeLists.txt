@@ -17,7 +17,11 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/CameraObservation.msg"
   "msg/LidarObservation.msg"
   "msg/TargetEstimation.msg"
+  "msg/VisibilityEvidence.msg"
+  "msg/ObservationWindow.msg"
+  "msg/BaseReference.msg"
   DEPENDENCIES geometry_msgs std_msgs builtin_interfaces
 )
 
+ament_export_dependencies(rosidl_default_runtime)
 ament_package()

@@ -1,5 +1,0 @@
-/**:
-  ros__parameters:
-    # 基地和滑轨位姿只从description固定TF读取，无基地PCD/配准参数。
-    model_path: package://dart_bringup/models/pcd/armor_pnx_5mm.pcd
-    publish_candidate_model: true

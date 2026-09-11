@@ -1,6 +1,7 @@
 #include "dart_camera/green_light_detector_node.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cv_bridge/cv_bridge.h>
 #include <dart_interfaces/msg/detail/camera_observation__struct.hpp>
 #include <functional>
@@ -48,6 +49,14 @@ GreenLightDetectorNode::GreenLightDetectorNode(const rclcpp::NodeOptions& option
         rclcpp::SensorDataQoS(),
         std::bind(&GreenLightDetectorNode::cameraInfoCallback, this, std::placeholders::_1));
 
+    watchdog_ = create_wall_timer(std::chrono::milliseconds(100), [this]() {
+        const double age = now().seconds() - last_image_received_;
+        if (last_image_received_ < 0.0 || age < 0.0 || age > get_parameter("image_timeout_s").as_double()) {
+            previous_center_.reset(); consecutive_detections_ = 0;
+            std_msgs::msg::Header header; header.stamp = now();
+            publishStatus(header, dart_interfaces::msg::CameraObservation::STATUS_TIMEOUT);
+        }
+    });
     parameter_callback_ = add_on_set_parameters_callback(
         std::bind(&GreenLightDetectorNode::onParametersChanged, this, std::placeholders::_1));
 
@@ -68,6 +77,10 @@ void GreenLightDetectorNode::declareParameters() {
     declare_parameter<std::string>("observation_topic", "observation", read_only);
     declare_parameter<std::string>("debug_mask_topic", "~/debug/mask", read_only);
     declare_parameter<bool>("publish_debug_mask", false);
+    declare_parameter<double>("image_timeout_s", 0.3, read_only);
+    declare_parameter<double>("association_radius_px", 80.0, read_only);
+    declare_parameter<double>("ambiguity_margin", 0.05, read_only);
+    declare_parameter<int>("confirmation_frames", 3, read_only);
 
     declare_parameter<double>("segmentation.min_hue", defaults.min_hue);
     declare_parameter<double>("segmentation.max_hue", defaults.max_hue);
@@ -209,6 +222,7 @@ GreenLightDetectorNode::onParametersChanged(const std::vector<rclcpp::Parameter>
 
 void GreenLightDetectorNode::imageCallback(
     const sensor_msgs::msg::Image::ConstSharedPtr& image_msg) {
+    last_image_received_ = now().seconds();
     std::shared_ptr<GreenLightDetector> green_light_detector;
     std::shared_ptr<BearingSolver> bearing_solver;
     std::uint32_t calibration_width = 0U;
@@ -227,7 +241,38 @@ void GreenLightDetectorNode::imageCallback(
 
     try {
         const cv_bridge::CvImageConstPtr cv_image = cv_bridge::toCvShare(image_msg, "bgr8");
-        const GreenLightDetectionResult result = green_light_detector->detect(cv_image->image);
+        GreenLightDetectionResult result = green_light_detector->detect(cv_image->image);
+        using Observation = dart_interfaces::msg::CameraObservation;
+        selection_status_ = Observation::STATUS_OK;
+        const double stamp = rclcpp::Time(image_msg->header.stamp).seconds();
+        const bool recent = stamp > last_detection_stamp_ && stamp-last_detection_stamp_ < 0.2;
+        if (!recent) { previous_center_.reset(); consecutive_detections_ = 0; }
+        std::vector<GreenLightCandidate> selected;
+        if (previous_center_) {
+            for (const auto& c : result.candidates) {
+                if (cv::norm(c.center_px-*previous_center_) <= get_parameter("association_radius_px").as_double())
+                    selected.push_back(c);
+            }
+        }
+        if (selected.empty()) {
+            selected = result.candidates;
+            previous_center_.reset(); consecutive_detections_ = 0;
+        }
+        std::sort(selected.begin(), selected.end(), [](const auto& a, const auto& b) { return a.fit_score > b.fit_score; });
+        if (selected.size() > 1 && selected[0].fit_score-selected[1].fit_score < get_parameter("ambiguity_margin").as_double()) {
+            result.target.reset(); previous_center_.reset(); consecutive_detections_ = 0;
+            selection_status_ = Observation::STATUS_AMBIGUOUS;
+        } else if (!selected.empty()) {
+            previous_center_ = selected.front().center_px;
+            last_detection_stamp_ = stamp;
+            ++consecutive_detections_;
+            result.target = selected.front();
+            if (consecutive_detections_ < get_parameter("confirmation_frames").as_int()) {
+                result.target.reset(); selection_status_ = Observation::STATUS_ACQUIRING;
+            }
+        } else {
+            result.target.reset(); previous_center_.reset(); consecutive_detections_ = 0;
+        }
         const bool calibration_matches_image =
             bearing_solver && (calibration_width == 0U || calibration_width == image_msg->width) &&
             (calibration_height == 0U || calibration_height == image_msg->height) &&
@@ -291,7 +336,7 @@ void GreenLightDetectorNode::cameraInfoCallback(
     std::copy(camera_info_msg->k.begin(), camera_info_msg->k.end(), config.camera_matrix.begin());
     config.distortion_coefficients = camera_info_msg->d;
 
-    if (!config.isConfigValid()) {
+    if (camera_info_msg->distortion_model != "plumb_bob" || !config.isConfigValid()) {
         {
             std::lock_guard<std::mutex> lock(green_light_detector_mutex_);
             bearing_solver_.reset();
@@ -335,7 +380,15 @@ void GreenLightDetectorNode::publishObservation(const std_msgs::msg::Header& hea
                                                 const std::optional<cv::Vec3d>& bearing) {
     dart_interfaces::msg::CameraObservation message;
     message.header = header;
-    if (result.contours_count == 0) {
+    message.candidate_count = static_cast<std::uint32_t>(result.candidates.size());
+    if (result.target) {
+        message.quality = static_cast<float>(result.target->fit_score);
+        message.center_u = result.target->center_px.x; message.center_v = result.target->center_px.y;
+        message.radius_px = static_cast<float>(result.target->radius_px);
+    }
+    if (selection_status_ != dart_interfaces::msg::CameraObservation::STATUS_OK) {
+        message.status_code = selection_status_;
+    } else if (result.contours_count == 0) {
         message.status_code = dart_interfaces::msg::CameraObservation::STATUS_NO_CONTOUR;
     } else if (!result.target.has_value()) {
         message.status_code = dart_interfaces::msg::CameraObservation::STATUS_NO_CANDIDATE;

@@ -44,6 +44,12 @@ private:
                             const std::optional<cv::Vec3d>& bearing);
     void publishStatus(const std_msgs::msg::Header& header, std::uint8_t status_code);
 
+    double last_image_received_{-1.0};
+    double last_detection_stamp_{-1.0};
+    std::optional<cv::Point2f> previous_center_;
+    int consecutive_detections_{0};
+    std::uint8_t selection_status_{0};
+    rclcpp::TimerBase::SharedPtr watchdog_;
     std::string image_topic_;
     std::string camera_info_topic_;
     std::string observation_topic_;

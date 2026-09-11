@@ -39,6 +39,19 @@ SerialNode::SerialNode(const rclcpp::NodeOptions& options) : Node("serial_node",
         rclcpp::SensorDataQoS(),
         std::bind(&SerialNode::sendCallback, this, std::placeholders::_1));
 
+    const double sign = get_parameter("motor_to_joint_sign").as_double();
+    const double zero = get_parameter("motor_zero_rad").as_double();
+    const double timeout = get_parameter("command_timeout_s").as_double();
+    if ((sign != 1.0 && sign != -1.0) || !std::isfinite(zero) || !std::isfinite(timeout) || timeout <= 0.0)
+        throw std::invalid_argument("Invalid motor conversion or command timeout");
+    command_watchdog_ = create_wall_timer(std::chrono::milliseconds(100), [this]() {
+        const double age = now().seconds() - last_command_received_.load();
+        if (last_command_received_.load() < 0.0 || age < 0.0 || age > get_parameter("command_timeout_s").as_double()) {
+            auto invalid = std::make_shared<dart_interfaces::msg::AimCommand>();
+            invalid->header.stamp = now();
+            sendCallback(invalid);
+        }
+    });
     running_.store(true);
     receive_thread_ = std::thread(&SerialNode::receiveLoop, this);
 
@@ -61,6 +74,9 @@ SerialNode::~SerialNode() {
 void SerialNode::declareParameters() {
     declare_parameter<std::string>("device", "/dev/ttyACM0");
     declare_parameter<int>("baud_rate", 115200);
+    declare_parameter<double>("motor_to_joint_sign", 1.0);
+    declare_parameter<double>("motor_zero_rad", 0.0);
+    declare_parameter<double>("command_timeout_s", 0.2);
     declare_parameter<int>("read_timeout_ms", 100);
     declare_parameter<int>("reconnect_interval_ms", 1000);
     declare_parameter<std::string>("send_topic", "aim_command");
@@ -153,13 +169,13 @@ void SerialNode::processFrame(const std::vector<std::uint8_t>& frame) {
         return;
     }
 
+    if (!std::isfinite(packet->yaw_rad) || !std::isfinite(packet->offset_rad)) return;
     const rclcpp::Time stamp = now();
 
     dart_interfaces::msg::ControllerState message;
     message.header.stamp = stamp;
     message.header.frame_id = "serial";
     message.target_id = packet->target_id;
-    message.dart_id = packet->dart_id;
     message.offset_rad = packet->offset_rad;
     message.yaw_rad = packet->yaw_rad;
     receive_publisher_->publish(message);
@@ -167,11 +183,13 @@ void SerialNode::processFrame(const std::vector<std::uint8_t>& frame) {
     sensor_msgs::msg::JointState state;
     state.header.stamp = stamp;
     state.name.push_back(yaw_joint_name_);
-    state.position.push_back(packet->yaw_rad);
+    state.position.push_back(get_parameter("motor_to_joint_sign").as_double() *
+        (packet->yaw_rad - get_parameter("motor_zero_rad").as_double()));
     joint_state_publisher_->publish(state);
 }
 
 void SerialNode::sendCallback(const dart_interfaces::msg::AimCommand::ConstSharedPtr& message) {
+    last_command_received_.store(now().seconds());
     if (!connected_.load()) {
         RCLCPP_WARN_THROTTLE(
             get_logger(), *get_clock(), 2000, "Dropping aim command: serial port is disconnected");
@@ -180,10 +198,13 @@ void SerialNode::sendCallback(const dart_interfaces::msg::AimCommand::ConstShare
 
     try {
         SendPacket packet;
-        packet.target_state = message->target_state;
-        packet.stable = message->stable ? 1U : 0U;
-        packet.yaw_rad = message->yaw_rad;
-        packet.distance_m = message->distance_m;
+        const double age = (now() - rclcpp::Time(message->header.stamp)).seconds();
+        const bool valid = age >= 0.0 && age <= get_parameter("command_timeout_s").as_double() &&
+            std::isfinite(message->yaw_rad) && std::isfinite(message->distance_m) &&
+            message->distance_m > 0.0F && message->state >= 1 && message->state <= 3;
+        packet.state = valid ? message->state : 0;
+        packet.yaw_rad = valid ? message->yaw_rad : 0.0F;
+        packet.distance_m = valid ? message->distance_m : 0.0F;
 
         const auto frame = encodeSendPacket(packet);
         std::lock_guard<std::mutex> lock(port_lifecycle_mutex_);
