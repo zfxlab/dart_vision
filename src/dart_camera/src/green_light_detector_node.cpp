@@ -2,7 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
-#include <cv_bridge/cv_bridge.h>
+#include <cv_bridge/cv_bridge.hpp>
 #include <dart_interfaces/msg/detail/camera_observation__struct.hpp>
 #include <functional>
 #include <opencv2/core.hpp>

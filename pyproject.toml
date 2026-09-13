@@ -4,8 +4,8 @@
 # 与 .clang-format 的 ColumnLimit 保持一致
 line-length = 100
 
-# Ubuntu 22.04 / ROS 2 Humble 默认使用 Python 3.10
-target-version = "py310"
+# Ubuntu 24.04 / ROS 2 Jazzy 默认使用 Python 3.12
+target-version = "py312"
 
 # 不检查构建产物和第三方生成目录
 extend-exclude = [

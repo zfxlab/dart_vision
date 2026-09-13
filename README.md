@@ -4,18 +4,36 @@ RoboMaster 飞镖镖架感知与瞄准系统。MID-70 固定在镖架主体，�
 
 ## 运行
 
-目标运行环境为 Linux + ROS 2（包含 rclpy、tf2_ros、sensor_msgs_py）、NumPy/SciPy。相机检测、相机驱动和串口为 C++；新增雷达、估计和决策节点为 Python，点云计算使用 NumPy/SciPy。海康 MVS 和 Livox SDK 依照各驱动说明安装。
+目标运行环境为 Ubuntu 24.04 + ROS 2 Jazzy + Python 3.12（包含 rclpy、tf2_ros、sensor_msgs_py）、NumPy/SciPy。相机检测、相机驱动和串口为 C++；新增雷达、估计和决策节点为 Python，点云计算使用 NumPy/SciPy。海康 MVS 和 Livox SDK 依照各驱动说明安装。
 
 在本仓库根目录：
 
 ```bash
-rosdep install --from-paths src third_party --ignore-src -r -y
-colcon build --symlink-install
+source /opt/ros/jazzy/setup.bash
+rosdep install --from-paths src third_party tools --ignore-src --rosdistro jazzy -r -y
+colcon build --symlink-install --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 source install/setup.bash
 ros2 launch dart_bringup system.launch.py
 ```
 
 依赖安装前确认 ROS 2 环境已加载，三个子模块已经拉取。海康 SDK 等厂商依赖不保证由 rosdep 自动安装。
+
+### 从 Ubuntu 22.04 / Humble 迁移
+
+不要复用旧 `build/`、`install/` 和 Python 3.10 虚拟环境；先备份，再在只加载 Jazzy 的终端中重新构建。不要加载旧的 `install/setup.bash`。
+
+可选的 Python 开发环境（先安装 uv；ROS 系统依赖仍通过 rosdep 安装）：
+
+```bash
+uv venv --python /usr/bin/python3 --system-site-packages .venv
+uv pip compile requirements-uv.in --python .venv/bin/python -o requirements-uv.lock
+uv pip install --python .venv/bin/python -r requirements-uv.lock
+source .venv/bin/activate
+```
+
+`--system-site-packages` 用于访问系统安装的 ROS Python 依赖。使用虚拟环境版本的 NumPy/SciPy 运行节点时，启动前也需要激活该环境。上面的构建命令固定使用系统 Python 3.12 生成 ROS 接口。
+
+Livox SDK vendor 保留 MID-70 使用的 SDK 2.3.1，并仅对 GCC 13 及以上的外部 SDK 构建放宽 `c++20-compat` 警告的错误处理；其余 `-Werror` 检查保留。首次构建需联网下载 SDK。
 
 录包回放：
 
@@ -130,4 +148,12 @@ colcon test-result --verbose
 
 测试包含真实模型单位、基地配准、模块位移、积累时间跨度、光学符号、offset、射线退化、开关状态防抖、模式距离和数据过期。test_pipeline.py 运行实际 Python 节点回调，但使用本地 ROS/TF 替身；它验证消息流和生命周期，不验证 DDS、生成消息 ABI、TF 缓存时序或 ROS 2 二进制兼容性。
 
-当前修改在 Windows 环境进行，尚未完成 Linux ROS 2 全量编译、真实相机/雷达回放和电控联调，不能把本机测试通过理解为已具备实机精度。
+Ubuntu 24.04 / Jazzy 迁移验证：13 个包全量编译通过；25 项 Python 用例、`dart_lidar` / `dart_aiming` 的 colcon 测试及串口协议测试通过；Python 3.12 消息类型支持库和业务节点导入、`system.launch.py --show-args` 解析通过。启动参数解析不代表系统已实际启动。
+
+本次验证机器的 rosdep 检查仍缺少以下系统依赖，完整运行前需要安装：
+
+```bash
+sudo apt install ros-jazzy-image-transport-plugins ros-jazzy-xacro libapr1-dev libaprutil1-dev
+```
+
+真实相机/雷达回放和电控联调仍需在设备上验证，不能把本机编译和测试通过理解为已具备实机精度。

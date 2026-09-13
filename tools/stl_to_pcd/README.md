@@ -6,7 +6,7 @@
 ## 构建
 
 ```bash
-source /opt/ros/humble/setup.bash
+source /opt/ros/jazzy/setup.bash
 colcon build --packages-select stl_to_pcd --symlink-install
 source install/setup.bash
 ```
