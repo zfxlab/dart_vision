@@ -29,6 +29,8 @@ PacketType packetTypeFromHeader(std::uint8_t header) noexcept {
             return PacketType::kReceive;
         case kSendPacketHeader:
             return PacketType::kSend;
+        case kLoggerPacketHeader:
+            return PacketType::kLogger;
         default:
             return PacketType::kUnknown;
     }
@@ -40,6 +42,8 @@ std::size_t packetSizeFromHeader(std::uint8_t header) noexcept {
             return sizeof(ReceivePacket);
         case PacketType::kSend:
             return sizeof(SendPacket);
+        case PacketType::kLogger:
+            return sizeof(LoggerPacket);
         case PacketType::kUnknown:
             return 0;
     }
@@ -72,6 +76,26 @@ std::optional<ReceivePacket> decodeReceivePacket(const std::vector<std::uint8_t>
         "ReceivePacket must be trivially copyable");
 
     ReceivePacket packet{};
+    std::memcpy(&packet, frame.data(), sizeof(packet));
+    return packet;
+}
+
+std::optional<LoggerPacket> decodeLoggerPacket(const std::vector<std::uint8_t>& frame) {
+    if (frame.size() != sizeof(LoggerPacket)) {
+        return std::nullopt;
+    }
+    if (frame.front() != kLoggerPacketHeader) {
+        return std::nullopt;
+    }
+    if (!verifyCRC16(frame.data(), frame.size())) {
+        return std::nullopt;
+    }
+
+    static_assert(
+        std::is_trivially_copyable_v<LoggerPacket>,
+        "LoggerPacket must be trivially copyable");
+
+    LoggerPacket packet{};
     std::memcpy(&packet, frame.data(), sizeof(packet));
     return packet;
 }

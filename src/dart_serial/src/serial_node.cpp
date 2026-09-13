@@ -3,12 +3,30 @@
 #include <array>
 #include <cmath>
 #include <functional>
+#include <iomanip>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 
+#include "dart_serial/crc.hpp"
 #include "dart_serial/packet.hpp"
 
 namespace dart_vision::serial {
+namespace {
+
+std::string bytesToHex(const std::vector<std::uint8_t>& bytes) {
+    std::ostringstream stream;
+    stream << std::hex << std::uppercase << std::setfill('0');
+    for (std::size_t index = 0; index < bytes.size(); ++index) {
+        if (index != 0) {
+            stream << ' ';
+        }
+        stream << std::setw(2) << static_cast<unsigned int>(bytes[index]);
+    }
+    return stream.str();
+}
+
+} // namespace
 
 SerialNode::SerialNode(const rclcpp::NodeOptions& options) : Node("serial_node", options) {
     declareParameters();
@@ -144,25 +162,68 @@ void SerialNode::processBufferedFrames() {
             case ParseStatus::kFrameReady:
                 processFrame(result.frame);
                 break;
-            case ParseStatus::kCRCError:
+            case ParseStatus::kCRCError: {
+                const auto expected = calculateCRC16(
+                    result.frame.data(), result.frame.size() - sizeof(std::uint16_t));
+                const auto received = static_cast<std::uint16_t>(
+                    result.frame[result.frame.size() - 2] |
+                    (static_cast<std::uint16_t>(result.frame.back()) << 8));
+                const auto frame_hex = bytesToHex(result.frame);
                 RCLCPP_WARN_THROTTLE(get_logger(),
                                      *get_clock(),
                                      2000,
-                                     "Received a %zu-byte frame with invalid CRC16",
-                                     result.frame.size());
+                                     "Received a %zu-byte frame with invalid CRC16: "
+                                     "expected=0x%04X received_le=0x%04X bytes=[%s]",
+                                     result.frame.size(),
+                                     static_cast<unsigned int>(expected),
+                                     static_cast<unsigned int>(received),
+                                     frame_hex.c_str());
                 break;
-            case ParseStatus::kUnknownHeader:
+            }
+            case ParseStatus::kUnknownHeader: {
+                const auto discarded_hex = bytesToHex(result.frame);
                 RCLCPP_WARN_THROTTLE(get_logger(),
                                      *get_clock(),
                                      2000,
-                                     "Discarded %zu byte(s) before a valid receive header",
-                                     result.frame.size());
+                                     "Discarded %zu byte(s) before a valid incoming header: [%s]",
+                                     result.frame.size(),
+                                     discarded_hex.c_str());
                 break;
+            }
         }
     }
 }
 
 void SerialNode::processFrame(const std::vector<std::uint8_t>& frame) {
+    if (!frame.empty() && packetTypeFromHeader(frame.front()) == PacketType::kLogger) {
+        const auto packet = decodeLoggerPacket(frame);
+        if (!packet.has_value()) {
+            RCLCPP_WARN(get_logger(), "A parser-approved logger frame failed packet decoding");
+            return;
+        }
+
+        RCLCPP_DEBUG_THROTTLE(
+            get_logger(),
+            *get_clock(),
+            2000,
+            "Controller logger: state=%u prepare=%u station=%u fire_finished=%u "
+            "shot=%u dart=%u door=%u vision_light=%u stable=%u autoaim=%u "
+            "force_L=%.3f force_R=%.3f",
+            static_cast<unsigned int>(packet->state),
+            static_cast<unsigned int>(packet->prepare_state),
+            static_cast<unsigned int>(packet->launch_station_status),
+            static_cast<unsigned int>(packet->is_fire_finished),
+            static_cast<unsigned int>(packet->current_shot_number),
+            static_cast<unsigned int>(packet->current_dart_id),
+            static_cast<unsigned int>(packet->door_status),
+            static_cast<unsigned int>(packet->vision_light_detected),
+            static_cast<unsigned int>(packet->vision_stable_state),
+            static_cast<unsigned int>(packet->autoaim_allow),
+            static_cast<double>(packet->string_l_force),
+            static_cast<double>(packet->string_r_force));
+        return;
+    }
+
     const auto packet = decodeReceivePacket(frame);
     if (!packet.has_value()) {
         RCLCPP_WARN(get_logger(), "A parser-approved receive frame failed packet decoding");

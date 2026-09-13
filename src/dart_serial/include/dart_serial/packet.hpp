@@ -10,6 +10,7 @@ namespace dart_vision::serial {
 
 inline constexpr std::uint8_t kReceivePacketHeader = 0x5A;
 inline constexpr std::uint8_t kSendPacketHeader = 0xA5;
+inline constexpr std::uint8_t kLoggerPacketHeader = 0xD5;
 
 /**
  * @brief 下位机发送给视觉端的固定长度协议包。
@@ -17,6 +18,7 @@ inline constexpr std::uint8_t kSendPacketHeader = 0xA5;
 struct ReceivePacket {
     std::uint8_t header{kReceivePacketHeader};
     std::uint8_t target_id{}; ///< 0前哨站 1固定 2随机固定 3随机移动 4末端移动
+    std::uint8_t dart_number{}; ///< 飞镖编号（临时）
     float offset_rad{};       ///< 飞镖的偏转角
     float yaw_rad{};          ///< yaw轴电机位置
     std::uint16_t crc{};
@@ -33,16 +35,47 @@ struct SendPacket {
     std::uint16_t crc{};
 } __attribute__((packed));
 
-static_assert(sizeof(ReceivePacket) == 12, "ReceivePacket protocol size mismatch");
+/**
+ * @brief 下位机发送给视觉端的运行状态日志包。
+ */
+struct LoggerPacket {
+    std::uint8_t header{kLoggerPacketHeader};
+    std::uint8_t state{};
+    std::uint8_t prepare_state{};
+    std::uint8_t launch_station_status{};
+    std::uint8_t is_fire_finished{};
+    std::uint8_t fired_count_this_open{};
+    std::uint8_t current_shot_number{};
+    std::uint8_t current_dart_id{};
+    std::uint8_t door_status{};
+    std::uint8_t last_light_detected{};
+    std::uint8_t vision_light_detected{};
+    std::uint8_t vision_stable_state{};
+    std::uint8_t door_session_active{};
+    std::uint8_t autoaim_allow{};
+    std::uint8_t door_close_inhibit_active{};
+    float string_l_force{};
+    float string_r_force{};
+    std::uint16_t checksum{};
+} __attribute__((packed));
+
+static_assert(sizeof(ReceivePacket) == 13, "ReceivePacket protocol size mismatch");
 static_assert(offsetof(ReceivePacket, target_id) == 1, "ReceivePacket target_id offset mismatch");
-static_assert(offsetof(ReceivePacket, offset_rad) == 2, "ReceivePacket offset_rad field mismatch");
-static_assert(offsetof(ReceivePacket, yaw_rad) == 6, "ReceivePacket yaw_rad offset mismatch");
-static_assert(offsetof(ReceivePacket, crc) == 10, "ReceivePacket CRC offset mismatch");
+static_assert(offsetof(ReceivePacket, offset_rad) == 3, "ReceivePacket offset_rad field mismatch");
+static_assert(offsetof(ReceivePacket, yaw_rad) == 7, "ReceivePacket yaw_rad offset mismatch");
+static_assert(offsetof(ReceivePacket, crc) == 11, "ReceivePacket CRC offset mismatch");
 static_assert(sizeof(SendPacket) == 12, "SendPacket protocol size mismatch");
 static_assert(offsetof(SendPacket, state) == 1, "SendPacket state offset mismatch");
 static_assert(offsetof(SendPacket, yaw_rad) == 2, "SendPacket yaw_rad offset mismatch");
 static_assert(offsetof(SendPacket, distance_m) == 6, "SendPacket distance_m offset mismatch");
 static_assert(offsetof(SendPacket, crc) == 10, "SendPacket CRC offset mismatch");
+static_assert(sizeof(LoggerPacket) == 25, "LoggerPacket protocol size mismatch");
+static_assert(offsetof(LoggerPacket, state) == 1, "LoggerPacket state offset mismatch");
+static_assert(
+    offsetof(LoggerPacket, string_l_force) == 15, "LoggerPacket left force offset mismatch");
+static_assert(
+    offsetof(LoggerPacket, string_r_force) == 19, "LoggerPacket right force offset mismatch");
+static_assert(offsetof(LoggerPacket, checksum) == 23, "LoggerPacket checksum offset mismatch");
 
 /**
  * @brief 串口协议包类型。
@@ -50,6 +83,7 @@ static_assert(offsetof(SendPacket, crc) == 10, "SendPacket CRC offset mismatch")
 enum class PacketType {
     kReceive, ///< 下位机发送给视觉端的数据包。
     kSend,    ///< 视觉端发送给下位机的数据包。
+    kLogger,  ///< 下位机发送给视觉端的运行状态日志包。
     kUnknown  ///< 未知帧头，无法判断包类型。
 };
 
@@ -65,7 +99,7 @@ enum class PacketType {
  * @brief 根据帧头返回对应协议包的完整字节数。
  *
  * @param header 协议帧头。
- * @return ReceivePacket 或 SendPacket 的固定长度；未知帧头返回 0。
+ * @return 对应固定长度；未知帧头返回 0。
  */
 [[nodiscard]] std::size_t packetSizeFromHeader(std::uint8_t header) noexcept;
 
@@ -91,6 +125,12 @@ enum class PacketType {
  */
 [[nodiscard]] std::optional<ReceivePacket>
 decodeReceivePacket(const std::vector<std::uint8_t>& frame);
+
+/**
+ * @brief 校验并解码下位机日志帧。
+ */
+[[nodiscard]] std::optional<LoggerPacket>
+decodeLoggerPacket(const std::vector<std::uint8_t>& frame);
 
 } // namespace dart_vision::serial
 

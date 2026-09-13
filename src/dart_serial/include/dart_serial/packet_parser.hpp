@@ -41,8 +41,8 @@ struct ParseResult {
  * 串口的一次 read() 不保证对应一帧：可能只读到半帧，也可能一次读到多帧。PacketParser
  * 通过内部缓冲区跨 read() 保存数据，并根据 packet.hpp 中定义的接收帧头和结构体大小分帧。
  *
- * 当前解析器只接收 ReceivePacket。SendPacket 是本机发往下位机的数据，因此其帧头不会被
- * 当作合法接收帧头。
+ * 当前解析器接收 ReceivePacket 和 LoggerPacket。SendPacket 是本机发往下位机的数据，
+ * 因此其帧头不会被当作合法接收帧头。
  *
  * @note 该类本身不提供线程安全保证，应由同一个接收线程调用，或由调用方进行同步。
  */

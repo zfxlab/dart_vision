@@ -9,8 +9,8 @@
 namespace dart_vision::serial {
 namespace {
 
-bool isReceiveHeader(std::uint8_t value) noexcept {
-    return value == kReceivePacketHeader;
+bool isIncomingHeader(std::uint8_t value) noexcept {
+    return value == kReceivePacketHeader || value == kLoggerPacketHeader;
 }
 
 } // namespace
@@ -32,7 +32,7 @@ ParseResult PacketParser::nextFrame() {
         return {};
     }
 
-    const auto header = std::find_if(buffer_.cbegin(), buffer_.cend(), isReceiveHeader);
+    const auto header = std::find_if(buffer_.cbegin(), buffer_.cend(), isIncomingHeader);
 
     if (header != buffer_.cbegin()) {
         ParseResult result;
