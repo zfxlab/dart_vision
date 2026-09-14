@@ -46,14 +46,70 @@ ros2 bag play YOUR_BAG --clock
 
 ## 包与话题
 
-| 包 | 输入 | 输出 |
+以下名称是 `system.launch.py` 默认配置下的完全限定话题名；修改 namespace 或话题参数后，
+实际名称会相应变化。
+
+| 包 | 方向 | 话题 | 消息类型 | 用途 |
+|---|---|---|---|---|
+| `hik_camera_driver` | 发布 | `/camera/image_raw` | `sensor_msgs/msg/Image` | 相机原始图像 |
+| `hik_camera_driver` | 发布 | `/camera/camera_info` | `sensor_msgs/msg/CameraInfo` | 相机内参与畸变参数 |
+| `hik_camera_driver` | 发布 | `/diagnostics` | `diagnostic_msgs/msg/DiagnosticArray` | 相机连接和采集状态 |
+| `dart_camera` | 订阅 | `/camera/image_raw` | `sensor_msgs/msg/Image` | 绿灯检测输入图像 |
+| `dart_camera` | 订阅 | `/camera/camera_info` | `sensor_msgs/msg/CameraInfo` | 像素中心去畸变及视线计算 |
+| `dart_camera` | 发布 | `/camera/observation` | `dart_interfaces/msg/CameraObservation` | 绿灯候选状态和相机坐标系单位视线 |
+| `dart_camera` | 发布 | `/camera/green_light_detector/debug/mask` | `sensor_msgs/msg/Image` | 分割掩膜；由 `publish_debug_mask` 控制 |
+| `livox_ros2_driver` | 发布 | `/livox/lidar` | `sensor_msgs/msg/PointCloud2` | MID-70 点云；当前 `xfer_format=0` |
+| `livox_ros2_driver` | 发布 | `/livox/imu` | `sensor_msgs/msg/Imu` | 雷达 IMU；设备支持并启用时发布 |
+| `dart_lidar` | 订阅 | `/livox/lidar` | `sensor_msgs/msg/PointCloud2` | 门状态、基地和模块识别输入 |
+| `dart_lidar` | 订阅 | `/observation_window` | `dart_interfaces/msg/ObservationWindow` | 当前开门周期及允许积累状态 |
+| `dart_lidar` | 发布 | `/lidar/visibility` | `dart_interfaces/msg/VisibilityEvidence` | 单帧门遮挡证据及近远场点数 |
+| `dart_lidar` | 发布 | `/lidar/base_reference` | `dart_interfaces/msg/BaseReference` | 启动先验或本周期实测基地位姿 |
+| `dart_lidar` | 发布 | `/lidar/observation` | `dart_interfaces/msg/LidarObservation` | 模块在滑轨上的位置和拟合质量 |
+| `dart_target_estimation` | 订阅 | `/lidar/visibility` | `dart_interfaces/msg/VisibilityEvidence` | 开关门状态防抖输入 |
+| `dart_target_estimation` | 订阅 | `/lidar/base_reference` | `dart_interfaces/msg/BaseReference` | 基地参考输入 |
+| `dart_target_estimation` | 订阅 | `/lidar/observation` | `dart_interfaces/msg/LidarObservation` | 雷达绿灯位置输入 |
+| `dart_target_estimation` | 订阅 | `/camera/observation` | `dart_interfaces/msg/CameraObservation` | 相机绿灯射线输入 |
+| `dart_target_estimation` | 发布 | `/observation_window` | `dart_interfaces/msg/ObservationWindow` | 防抖后的门状态和开门 epoch |
+| `dart_target_estimation` | 发布 | `/target_estimation` | `dart_interfaces/msg/TargetEstimation` | 统一坐标系下的基地、中心点和实际绿灯估计 |
+| `dart_serial` | 发布 | `/controller_state` | `dart_interfaces/msg/ControllerState` | 电控目标模式、飞镖偏置和电机反馈角 |
+| `dart_serial` | 发布 | `/joint_states` | `sensor_msgs/msg/JointState` | 转换后的发射架 yaw 关节角 |
+| `dart_serial` | 订阅 | `/aim_command` | `dart_interfaces/msg/AimCommand` | 写入电控的瞄准命令 |
+| `dart_aiming` | 订阅 | `/controller_state` | `dart_interfaces/msg/ControllerState` | 当前模式、飞镖偏置和电机状态 |
+| `dart_aiming` | 订阅 | `/target_estimation` | `dart_interfaces/msg/TargetEstimation` | 目标几何和观测质量 |
+| `dart_aiming` | 发布 | `/aim_command` | `dart_interfaces/msg/AimCommand` | 相对 yaw、距离和解状态 |
+| `dart_description` | 订阅 | `/joint_states` | `sensor_msgs/msg/JointState` | 更新可动关节 TF |
+| `dart_description` | 发布 | `/tf`、`/tf_static` | `tf2_msgs/msg/TFMessage` | 传感器、发射架和目标模型坐标变换 |
+
+`dart_bringup` 只负责组合 launch 和参数，本身不发布消息。`dart_interfaces` 只定义接口，
+不运行节点。`livox_interfaces` 定义 Livox 自定义点云格式，但当前配置使用标准
+`PointCloud2`。`livox_sdk_vendor` 提供 SDK，`stl_to_pcd` 是离线模型转换工具，均没有运行时
+ROS 消息。
+
+### 串口线协议包
+
+串口帧不是 ROS 消息；`dart_serial` 在串口结构体与上表中的 ROS 消息之间转换。
+
+| 结构体 | 帧头 | 方向 | 固定长度 | 内容 |
+|---|---:|---|---:|---|
+| `ReceivePacket` | `0x5A` | 电控 → 视觉 | 13 字节 | `target_id`、`dart_number`、`offset_rad`、`yaw_rad`、CRC16 |
+| `SendPacket` | `0xA5` | 视觉 → 电控 | 12 字节 | `state`、`yaw_rad`、`distance_m`、CRC16 |
+| `LoggerPacket` | `0xD5` | 电控 → 视觉 | 25 字节 | 电控运行状态、门和灯状态、左右拉力、CRC16 |
+
+三个结构体均为 packed 布局，CRC16 位于帧尾并按低字节在前发送；准确字段顺序以
+`src/dart_serial/include/dart_serial/packet.hpp` 为准。
+
+### 自定义消息
+
+| 消息 | 主要字段 | 状态值与说明 |
 |---|---|---|
-| dart_serial | 原始接收包、aim_command | controller_state、joint_states、原始发送包 |
-| dart_camera | camera/image_raw、camera/camera_info | camera/observation |
-| dart_lidar | livox/lidar（PointCloud2）、observation_window、固定 TF | lidar/visibility、lidar/base_reference、lidar/observation |
-| dart_target_estimation | 相机/雷达观测与 TF | observation_window、target_estimation |
-| dart_aiming | target_estimation、controller_state、当前 TF | aim_command |
-| dart_description | 启动先验、joint_states | TF |
+| `ControllerState` | `target_id`、`offset_rad`、`yaw_rad` | `target_id`：1 固定、2 随机固定、3 随机移动、4 末端移动；角度单位为 rad |
+| `AimCommand` | `state`、`yaw_rad`、`distance_m` | 0 `INVALID`、1 `ACQUIRE`、2 `TRACKING`、3 `DEGRADED`；距离单位为 m |
+| `CameraObservation` | `status_code`、`bearing`、`quality`、`candidate_count`、`center_u/v`、`radius_px` | 0 `OK`、1 `NO_CANDIDATE`、2 `NO_CONTOUR`、3 `ERROR`、4 `AMBIGUOUS`、5 `ACQUIRING`、6 `TIMEOUT`；`bearing` 是相机光学坐标系单位向量 |
+| `VisibilityEvidence` | `state`、`near_points`、`far_points`、`quality` | 0 `UNKNOWN`、1 `BLOCKED`、2 `CLEAR`；表示单帧雷达证据 |
+| `ObservationWindow` | `state`、`epoch`、`opened_at` | 状态值同 `VisibilityEvidence`；`epoch` 在确认新的开门周期时递增 |
+| `BaseReference` | `epoch`、`revision`、`source`、`finalized`、`pose`、`rmse_m`、`support` | `source`：0 `PRIOR`、1 `MEASURED`；`pose` 位于消息 `header.frame_id` 坐标系 |
+| `LidarObservation` | `window_start`、`epoch`、`reference_revision`、`valid`、`rail_position_m`、`rmse_m`、`support` | `rail_position_m` 是模块沿滑轨的位置，当前有效范围为 0～0.56 m |
+| `TargetEstimation` | `epoch`、`reference_revision`、`visibility`、`base_source`、`base_valid`、`base_center`、`center_light`、`light_valid`、`light_source`、`light_stamp`、`light_center`、`sensor_conflict` | `light_source`：0 `NONE`、1 `LIDAR`、2 `CAMERA_GEOMETRY`；所有点位于 `header.frame_id` 坐标系 |
 
 基地参考和观察窗口使用 transient-local QoS；相机、雷达和电控观测使用 sensor-data QoS。`dart_interfaces` 是内部消息的唯一来源。
 
@@ -128,32 +184,3 @@ base_link 是启动先验，运行时不覆盖静态 TF。BaseReference.pose 是
 MID-70 默认以 ROS 接收时间给处理结果标时（timestamp_source=receive），避免直接把未同步设备时钟当 ROS 时间。已验证驱动时钟同步或回放时可切换 header。相机驱动改为使用 SDK 返回后的主机接收时刻，扣除像素转换/发布延迟；这仍不是曝光时间。两路接收时间的系统性延迟需要实测，当前实现没有宣称硬件同步。
 
 Python 节点采用单线程回调；点数上限限制计算量，但硬件上的处理频率和积压情况需要录包计时验证。参数修改后重启系统，避免在一次积累过程中混用参数。
-
-## 验证
-
-无 ROS 环境下的测试（需要 numpy、scipy）：
-
-```bash
-python3 -m unittest discover -s tests -p 'test_*.py' -v
-g++ -std=c++17 -Isrc/dart_serial/include tests/test_packet.cpp src/dart_serial/src/packet.cpp src/dart_serial/src/packet_parser.cpp src/dart_serial/src/crc.cpp -o /tmp/dart_packet_test
-/tmp/dart_packet_test
-```
-
-ROS 环境中另执行：
-
-```bash
-colcon test --packages-select dart_lidar dart_aiming
-colcon test-result --verbose
-```
-
-测试包含真实模型单位、基地配准、模块位移、积累时间跨度、光学符号、offset、射线退化、开关状态防抖、模式距离和数据过期。test_pipeline.py 运行实际 Python 节点回调，但使用本地 ROS/TF 替身；它验证消息流和生命周期，不验证 DDS、生成消息 ABI、TF 缓存时序或 ROS 2 二进制兼容性。
-
-Ubuntu 24.04 / Jazzy 迁移验证：13 个包全量编译通过；25 项 Python 用例、`dart_lidar` / `dart_aiming` 的 colcon 测试及串口协议测试通过；Python 3.12 消息类型支持库和业务节点导入、`system.launch.py --show-args` 解析通过。启动参数解析不代表系统已实际启动。
-
-本次验证机器的 rosdep 检查仍缺少以下系统依赖，完整运行前需要安装：
-
-```bash
-sudo apt install ros-jazzy-image-transport-plugins ros-jazzy-xacro libapr1-dev libaprutil1-dev
-```
-
-真实相机/雷达回放和电控联调仍需在设备上验证，不能把本机编译和测试通过理解为已具备实机精度。
