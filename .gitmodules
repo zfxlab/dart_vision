@@ -1,6 +1,8 @@
 [submodule "third_party/hik_camera_driver"]
 	path = third_party/hik_camera_driver
 	url = git@github.com:zfxlab/hik_camera_driver.git
+	branch = main
 [submodule "third_party/dart_description"]
 	path = third_party/dart_description
 	url = git@github.com:zfxlab/dart_description.git
+	branch = stereo
