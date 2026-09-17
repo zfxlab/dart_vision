@@ -14,7 +14,8 @@ find_package(builtin_interfaces REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/AimCommand.msg"
   "msg/ControllerState.msg"
-  "msg/CameraObservation.msg"
+  "msg/GreenLightDetection.msg"
+  "msg/StereoTarget.msg"
   DEPENDENCIES geometry_msgs std_msgs builtin_interfaces
 )
 
