@@ -60,13 +60,16 @@ SerialNode::SerialNode(const rclcpp::NodeOptions& options) : Node("serial_node",
     const double sign = get_parameter("motor_to_joint_sign").as_double();
     const double zero = get_parameter("motor_zero_rad").as_double();
     const double timeout = get_parameter("command_timeout_s").as_double();
-    if ((sign != 1.0 && sign != -1.0) || !std::isfinite(zero) || !std::isfinite(timeout) || timeout <= 0.0)
+    if ((sign != 1.0 && sign != -1.0) || !std::isfinite(zero) || !std::isfinite(timeout) ||
+        timeout <= 0.0)
         throw std::invalid_argument("Invalid motor conversion or command timeout");
     command_watchdog_ = create_wall_timer(std::chrono::milliseconds(100), [this]() {
         const double age = now().seconds() - last_command_received_.load();
-        if (last_command_received_.load() < 0.0 || age < 0.0 || age > get_parameter("command_timeout_s").as_double()) {
+        if (last_command_received_.load() < 0.0 || age < 0.0 ||
+            age > get_parameter("command_timeout_s").as_double()) {
             auto invalid = std::make_shared<dart_interfaces::msg::AimCommand>();
             invalid->header.stamp = now();
+            invalid->state = dart_interfaces::msg::AimCommand::INVALID;
             sendCallback(invalid);
         }
     });
@@ -163,8 +166,8 @@ void SerialNode::processBufferedFrames() {
                 processFrame(result.frame);
                 break;
             case ParseStatus::kCRCError: {
-                const auto expected = calculateCRC16(
-                    result.frame.data(), result.frame.size() - sizeof(std::uint16_t));
+                const auto expected = calculateCRC16(result.frame.data(),
+                                                     result.frame.size() - sizeof(std::uint16_t));
                 const auto received = static_cast<std::uint16_t>(
                     result.frame[result.frame.size() - 2] |
                     (static_cast<std::uint16_t>(result.frame.back()) << 8));
@@ -202,25 +205,24 @@ void SerialNode::processFrame(const std::vector<std::uint8_t>& frame) {
             return;
         }
 
-        RCLCPP_DEBUG_THROTTLE(
-            get_logger(),
-            *get_clock(),
-            2000,
-            "Controller logger: state=%u prepare=%u station=%u fire_finished=%u "
-            "shot=%u dart=%u door=%u vision_light=%u stable=%u autoaim=%u "
-            "force_L=%.3f force_R=%.3f",
-            static_cast<unsigned int>(packet->state),
-            static_cast<unsigned int>(packet->prepare_state),
-            static_cast<unsigned int>(packet->launch_station_status),
-            static_cast<unsigned int>(packet->is_fire_finished),
-            static_cast<unsigned int>(packet->current_shot_number),
-            static_cast<unsigned int>(packet->current_dart_id),
-            static_cast<unsigned int>(packet->door_status),
-            static_cast<unsigned int>(packet->vision_light_detected),
-            static_cast<unsigned int>(packet->vision_stable_state),
-            static_cast<unsigned int>(packet->autoaim_allow),
-            static_cast<double>(packet->string_l_force),
-            static_cast<double>(packet->string_r_force));
+        RCLCPP_DEBUG_THROTTLE(get_logger(),
+                              *get_clock(),
+                              2000,
+                              "Controller logger: state=%u prepare=%u station=%u fire_finished=%u "
+                              "shot=%u dart=%u door=%u vision_light=%u stable=%u autoaim=%u "
+                              "force_L=%.3f force_R=%.3f",
+                              static_cast<unsigned int>(packet->state),
+                              static_cast<unsigned int>(packet->prepare_state),
+                              static_cast<unsigned int>(packet->launch_station_status),
+                              static_cast<unsigned int>(packet->is_fire_finished),
+                              static_cast<unsigned int>(packet->current_shot_number),
+                              static_cast<unsigned int>(packet->current_dart_id),
+                              static_cast<unsigned int>(packet->door_status),
+                              static_cast<unsigned int>(packet->vision_light_detected),
+                              static_cast<unsigned int>(packet->vision_stable_state),
+                              static_cast<unsigned int>(packet->autoaim_allow),
+                              static_cast<double>(packet->string_l_force),
+                              static_cast<double>(packet->string_r_force));
         return;
     }
 
@@ -230,22 +232,24 @@ void SerialNode::processFrame(const std::vector<std::uint8_t>& frame) {
         return;
     }
 
-    if (!std::isfinite(packet->yaw_rad) || !std::isfinite(packet->offset_rad)) return;
+    if (!std::isfinite(packet->launcher_yaw_rad) || !std::isfinite(packet->dart_offset_rad))
+        return;
     const rclcpp::Time stamp = now();
 
     dart_interfaces::msg::ControllerState message;
     message.header.stamp = stamp;
     message.header.frame_id = "serial";
-    message.target_id = packet->target_id;
-    message.offset_rad = packet->offset_rad;
-    message.yaw_rad = packet->yaw_rad;
+    message.target_mode = packet->target_mode;
+    message.dart_offset_rad = packet->dart_offset_rad;
+    message.launcher_yaw_rad = packet->launcher_yaw_rad;
     receive_publisher_->publish(message);
 
     sensor_msgs::msg::JointState state;
     state.header.stamp = stamp;
     state.name.push_back(yaw_joint_name_);
-    state.position.push_back(get_parameter("motor_to_joint_sign").as_double() *
-        (packet->yaw_rad - get_parameter("motor_zero_rad").as_double()));
+    state.position.push_back(
+        get_parameter("motor_to_joint_sign").as_double() *
+        (packet->launcher_yaw_rad - get_parameter("motor_zero_rad").as_double()));
     joint_state_publisher_->publish(state);
 }
 
@@ -260,12 +264,19 @@ void SerialNode::sendCallback(const dart_interfaces::msg::AimCommand::ConstShare
     try {
         SendPacket packet;
         const double age = (now() - rclcpp::Time(message->header.stamp)).seconds();
-        const bool valid = age >= 0.0 && age <= get_parameter("command_timeout_s").as_double() &&
-            std::isfinite(message->yaw_rad) && std::isfinite(message->distance_m) &&
-            message->distance_m > 0.0F && message->state >= 1 && message->state <= 3;
-        packet.state = valid ? message->state : 0;
-        packet.yaw_rad = valid ? message->yaw_rad : 0.0F;
-        packet.distance_m = valid ? message->distance_m : 0.0F;
+        using Command = dart_interfaces::msg::AimCommand;
+        const bool fresh = age >= 0.0 && age <= get_parameter("command_timeout_s").as_double();
+        // Unknown/stale messages must never be interpreted as a closed door.
+        packet.state = Command::INVALID;
+        if (fresh && message->state == Command::CLOSED) {
+            packet.state = Command::CLOSED;
+        } else if (fresh && message->state == Command::VALID &&
+                   std::isfinite(message->yaw_error_rad) && std::isfinite(message->distance_m) &&
+                   message->distance_m > 0.0F) {
+            packet.state = Command::VALID;
+            packet.yaw_rad = message->yaw_error_rad;
+            packet.distance_m = message->distance_m;
+        }
 
         const auto frame = encodeSendPacket(packet);
         std::lock_guard<std::mutex> lock(port_lifecycle_mutex_);

@@ -10,3 +10,7 @@
 
     joint_state_topic: joint_states
     yaw_joint_name: launcher_yaw_joint
+
+    motor_to_joint_sign: 1.0
+    motor_zero_rad: 0.0
+    command_timeout_s: 0.2

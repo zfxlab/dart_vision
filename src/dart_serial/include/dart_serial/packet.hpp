@@ -17,10 +17,10 @@ inline constexpr std::uint8_t kLoggerPacketHeader = 0xD5;
  */
 struct ReceivePacket {
     std::uint8_t header{kReceivePacketHeader};
-    std::uint8_t target_id{}; ///< 0前哨站 1固定 2随机固定 3随机移动 4末端移动
+    std::uint8_t target_mode{}; ///< 0前哨站 1固定 2随机固定 3随机移动 4末端移动
     std::uint8_t dart_number{}; ///< 飞镖编号（临时）
-    float offset_rad{};       ///< 飞镖的偏转角
-    float yaw_rad{};          ///< yaw轴电机位置
+    float dart_offset_rad{};    ///< 飞镖的偏转角
+    float launcher_yaw_rad{};   ///< yaw轴电机位置
     std::uint16_t crc{};
 } __attribute__((packed));
 
@@ -29,9 +29,9 @@ struct ReceivePacket {
  */
 struct SendPacket {
     std::uint8_t header{kSendPacketHeader};
-    std::uint8_t state{}; ///< 目标状态
-    float yaw_rad{};      ///< 加上offset后的相对偏转,与目标瞄准方向的偏角
-    float distance_m{};   ///< 飞镖...与装甲板中心距离(待定)
+    std::uint8_t state{2}; ///< 0=CLOSED, 1=VALID, 2=INVALID; default unknown
+    float yaw_rad{};       ///< 加上offset后的相对偏转,与目标瞄准方向的偏角
+    float distance_m{};    ///< 发射架参考点到绿灯的距离；非VALID时清零
     std::uint16_t crc{};
 } __attribute__((packed));
 
@@ -60,9 +60,12 @@ struct LoggerPacket {
 } __attribute__((packed));
 
 static_assert(sizeof(ReceivePacket) == 13, "ReceivePacket protocol size mismatch");
-static_assert(offsetof(ReceivePacket, target_id) == 1, "ReceivePacket target_id offset mismatch");
-static_assert(offsetof(ReceivePacket, offset_rad) == 3, "ReceivePacket offset_rad field mismatch");
-static_assert(offsetof(ReceivePacket, yaw_rad) == 7, "ReceivePacket yaw_rad offset mismatch");
+static_assert(offsetof(ReceivePacket, target_mode) == 1,
+              "ReceivePacket target_mode offset mismatch");
+static_assert(offsetof(ReceivePacket, dart_offset_rad) == 3,
+              "ReceivePacket dart_offset_rad field mismatch");
+static_assert(offsetof(ReceivePacket, launcher_yaw_rad) == 7,
+              "ReceivePacket launcher_yaw_rad offset mismatch");
 static_assert(offsetof(ReceivePacket, crc) == 11, "ReceivePacket CRC offset mismatch");
 static_assert(sizeof(SendPacket) == 12, "SendPacket protocol size mismatch");
 static_assert(offsetof(SendPacket, state) == 1, "SendPacket state offset mismatch");
@@ -71,10 +74,10 @@ static_assert(offsetof(SendPacket, distance_m) == 6, "SendPacket distance_m offs
 static_assert(offsetof(SendPacket, crc) == 10, "SendPacket CRC offset mismatch");
 static_assert(sizeof(LoggerPacket) == 25, "LoggerPacket protocol size mismatch");
 static_assert(offsetof(LoggerPacket, state) == 1, "LoggerPacket state offset mismatch");
-static_assert(
-    offsetof(LoggerPacket, string_l_force) == 15, "LoggerPacket left force offset mismatch");
-static_assert(
-    offsetof(LoggerPacket, string_r_force) == 19, "LoggerPacket right force offset mismatch");
+static_assert(offsetof(LoggerPacket, string_l_force) == 15,
+              "LoggerPacket left force offset mismatch");
+static_assert(offsetof(LoggerPacket, string_r_force) == 19,
+              "LoggerPacket right force offset mismatch");
 static_assert(offsetof(LoggerPacket, checksum) == 23, "LoggerPacket checksum offset mismatch");
 
 /**
