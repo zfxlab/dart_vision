@@ -3,7 +3,7 @@
 <package format="3">
   <name>dart_camera</name>
   <version>0.0.0</version>
-  <description>Green-light detection and calibrated bearing observations for the dart system.</description>
+  <description>Green-light pixel detection.</description>
   <maintainer email="fzhang859@connect.hkust-gz.edu.cn">pnx</maintainer>
   <license>MIT</license>
 

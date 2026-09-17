@@ -30,7 +30,7 @@ struct GreenLightDetectorConfig {
 
     double min_green_excess{25.0}; ///< 最小绿色优势值，计算式为 2G - R - B。
 
-    double min_radius_px{4.0};   ///< 候选最小外接圆半径下限。
+    double min_radius_px{8.0};   ///< 候选最小外接圆半径下限。
     double max_radius_px{20.0};  ///< 候选最小外接圆半径上限。
     double min_circularity{0.7}; ///< 最小圆度；圆度定义为 4*pi*面积/周长^2。
 
@@ -68,7 +68,7 @@ struct GreenLightCandidate {
 struct GreenLightDetectionResult {
     std::optional<GreenLightCandidate> target;   ///< 最优候选；没有合格候选时为空。
     std::vector<GreenLightCandidate> candidates; ///< 通过全部筛选条件的候选集合。
-    std::size_t contours_count{}; ///< 具备有效轮廓几何量、进入参数筛选的候选数。
+    std::size_t contours_count{}; ///< 清理后的绿色掩膜中全部外轮廓数，在几何/亮度筛选之前计数。
     cv::Mat binary_mask; ///< 完成形态学清理后的 CV_8UC1 二值掩膜。
 };
 

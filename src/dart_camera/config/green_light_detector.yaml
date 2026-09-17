@@ -1,9 +1,8 @@
 /**:
   ros__parameters:
     image_topic: image_raw
-    camera_info_topic: camera_info
-    observation_topic: observation
-    debug_mask_topic: "~/debug/mask"
+    detection_topic: detection
+    debug_mask_topic: "~/mask"
     publish_debug_mask: true
 
     segmentation:
@@ -14,8 +13,8 @@
       min_green_excess: 25.0
 
     geometry:
-      min_radius_px: 4.0
-      max_radius_px: 40.0
+      min_radius_px: 8.0
+      max_radius_px: 20.0
       min_circularity: 0.7
       max_aspect_ratio: 1.55
       min_fill_ratio: 0.45
