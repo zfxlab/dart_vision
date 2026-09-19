@@ -123,13 +123,5 @@ YAML 记录模型版本、坐标系、原始记录指纹、训练范围、指标
 - `fitting.py`：数据校验、拟合、角度环绕、独立验证和过期判断。
 - `storage.py`：CSV / JSON、原子草稿保存、模型导出。
 - `plotting.py`：交互图表、离线 HTML 报告、PNG 和 ZIP。
-- `tests/`：核心数值与 Streamlit 页面状态测试。
-
-运行测试：
-
-```bash
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python \
-  -m pytest tools/residual_calibration/tests -q
-```
-
-禁用 pytest 自动插件发现是为了避免已 source 的 ROS 环境加载不相关的 launch_testing 插件。
+- `run.sh`：使用项目根目录 `.venv` 启动工具。
+- `examples/`：示例测量数据。
