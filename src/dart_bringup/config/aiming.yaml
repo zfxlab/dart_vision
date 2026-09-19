@@ -1,0 +1,14 @@
+/**:
+  ros__parameters:
+    stereo_topic: /camera/stereo_target
+    controller_topic: /controller_state
+    command_topic: /aim_command
+    # 输出参考系：x 前、y 左、z 上。输入按 header.frame_id 通过 TF 转换。
+    reference_frame: launcher_frame
+    target_timeout_s: 0.2
+    controller_timeout_s: 0.3
+    confirmation_frames: 3
+    max_yaw_step_rad: 0.02
+    max_distance_step_m: 0.3
+    max_ray_gap_m: 0.1
+    supported_target_modes: [0, 1, 2, 3, 4]

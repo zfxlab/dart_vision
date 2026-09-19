@@ -1,3 +1,7 @@
+# Provisional calibration: 50 mm lens focused at 25 m.
+# Theoretical focal length: (50 mm * 25000 mm / (25000 mm - 50 mm)) / 0.00345 mm.
+# Principal point: center of the pixel-center coordinates (0..1439, 0..1079).
+# Distortion retains the measured values pending a more precise calibration.
 image_width: 1440
 image_height: 1080
 camera_name: camera
@@ -5,25 +9,32 @@ camera_name: camera
 camera_matrix:
   rows: 3
   cols: 3
-  data: [9955.98186,         0., 704.45187,
-                 0., 9940.26158, 569.55719,
-                 0.,         0.,        1.]
+  data: [14521.797217623654, 0.0, 719.5,
+         0.0, 14521.797217623654, 539.5,
+         0.0, 0.0, 1.0]
 distortion_model: plumb_bob
 distortion_coefficients:
   rows: 1
   cols: 5
-  data: [0.039778, -2.949234, -0.000008, -0.000034, 0.000000]
+  data:
+    [
+      0.4639928123413632,
+      -163.19845533406675,
+      -0.0033908381394588214,
+      0.0034823057976936605,
+      0.0,
+    ]
 # prettier-ignore
 rectification_matrix:
   rows: 3
   cols: 3
-  data: [1., 0., 0.,
-         0., 1., 0.,
-         0., 0., 1.]
+  data: [1.0, 0.0, 0.0,
+         0.0, 1.0, 0.0,
+         0.0, 0.0, 1.0]
 # prettier-ignore
 projection_matrix:
   rows: 3
   cols: 4
-  data: [9957.31977,         0., 704.44594, 0.,
-                 0., 9941.61741, 569.55623, 0.,
-                 0.,         0.,        1., 0.]
+  data: [14521.797217623654, 0.0, 719.5, 0.0,
+         0.0, 14521.797217623654, 539.5, 0.0,
+         0.0, 0.0, 1.0, 0.0]

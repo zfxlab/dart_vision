@@ -10,22 +10,22 @@ defaults:
   exposure_time: 3000.0
   auto_gain: false
   gain: 0.0
-  frame_rate: 0.0
+  frame_rate: 60.0
   trigger_mode: "off"
 
 cameras:
   - enabled: true
-    namespace: camera
+    namespace: left_camera
     node_name: driver
-    serial_number: 00DA1923275
+    serial_number: 00DA1701234
     camera_name: camera
-    frame_id: camera_optical_frame
-    camera_info_url: "calibration/00DA1923275.yaml"
+    frame_id: left_camera_optical_frame
+    camera_info_url: "calibration/00DA1701234.yaml"
 
-  - enabled: false
-    namespace: camera
+  - enabled: true
+    namespace: right_camera
     node_name: driver
     serial_number: 00DA1923281
     camera_name: camera
-    frame_id: camera_optical_frame
+    frame_id: right_camera_optical_frame
     camera_info_url: "calibration/00DA1923281.yaml"
