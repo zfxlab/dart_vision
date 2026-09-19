@@ -1,0 +1,5 @@
+extend = "../../pyproject.toml"
+
+[lint]
+# 中文界面、报告和注释允许使用中文标点。
+ignore = ["RUF001", "RUF002", "RUF003"]

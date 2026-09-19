@@ -200,3 +200,5 @@ temp/
 !src/**/core.py
 
 .testdeps/
+
+.local_data

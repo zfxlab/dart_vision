@@ -3,3 +3,9 @@ scipy==1.15.3
 PyYAML>=6,<7
 pytest>=7,<9
 ruff
+
+# 离线残差标定界面，与项目共用 .venv
+pandas>=2.2,<3
+streamlit>=1.50,<2
+plotly>=6,<7
+matplotlib>=3.8,<4
