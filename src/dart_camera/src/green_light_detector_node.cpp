@@ -3,9 +3,12 @@
 #include <algorithm>
 #include <chrono>
 #include <cv_bridge/cv_bridge.hpp>
+#include <diagnostic_msgs/msg/diagnostic_status.hpp>
+#include <diagnostic_msgs/msg/key_value.hpp>
 #include <functional>
 #include <opencv2/core.hpp>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
 #include "dart_interfaces/msg/green_light_detection.hpp"
@@ -18,10 +21,18 @@ rcl_interfaces::msg::SetParametersResult parameterFailure(const std::string& rea
     result.reason = reason;
     return result;
 }
+
+diagnostic_msgs::msg::KeyValue keyValue(const std::string& key, const std::string& value) {
+    diagnostic_msgs::msg::KeyValue result;
+    result.key = key;
+    result.value = value;
+    return result;
+}
 } // namespace
 
 GreenLightDetectorNode::GreenLightDetectorNode(const rclcpp::NodeOptions& options)
-    : Node("green_light_detector", options) {
+    : Node("green_light_detector", options),
+      previous_diagnostic_time_(std::chrono::steady_clock::now()) {
     declareParameters();
     green_light_detector_config_ = readGreenLightDetectorConfig();
     if (!green_light_detector_config_.isConfigValid()) {
@@ -38,6 +49,10 @@ GreenLightDetectorNode::GreenLightDetectorNode(const rclcpp::NodeOptions& option
         detection_topic_, rclcpp::SensorDataQoS());
     debug_mask_publisher_ =
         create_publisher<sensor_msgs::msg::Image>(debug_mask_topic_, rclcpp::SensorDataQoS());
+    diagnostics_publisher_ =
+        create_publisher<diagnostic_msgs::msg::DiagnosticArray>("/diagnostics", rclcpp::QoS(10));
+    diagnostics_timer_ = create_wall_timer(
+        std::chrono::seconds(1), std::bind(&GreenLightDetectorNode::publishDiagnostics, this));
     image_subscription_ = create_subscription<sensor_msgs::msg::Image>(
         image_topic_,
         rclcpp::SensorDataQoS(),
@@ -202,6 +217,12 @@ GreenLightDetectorNode::onParametersChanged(const std::vector<rclcpp::Parameter>
 
 void GreenLightDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr& image) {
     using Detection = dart_interfaces::msg::GreenLightDetection;
+    const auto processing_start = std::chrono::steady_clock::now();
+    {
+        std::lock_guard<std::mutex> lock(diagnostic_mutex_);
+        ++diagnostic_statistics_.received_total;
+        ++diagnostic_statistics_.received_interval;
+    }
     Detection message;
     message.header = image->header;
     std::shared_ptr<GreenLightDetector> detector;
@@ -238,5 +259,118 @@ void GreenLightDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstS
         RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "%s", e.what());
     }
     detection_publisher_->publish(message);
+
+    const auto processing_end = std::chrono::steady_clock::now();
+    const auto processing_time =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(processing_end - processing_start);
+    std::lock_guard<std::mutex> lock(diagnostic_mutex_);
+    auto& statistics = diagnostic_statistics_;
+    ++statistics.processed_total;
+    ++statistics.processed_interval;
+    statistics.processing_time_interval += processing_time;
+    statistics.max_processing_time_interval =
+        std::max(statistics.max_processing_time_interval, processing_time);
+    statistics.last_processed_time = processing_end;
+    switch (message.status) {
+        case Detection::DETECTED:
+            ++statistics.detected_total;
+            ++statistics.detected_interval;
+            break;
+        case Detection::CLOSED:
+            ++statistics.closed_total;
+            break;
+        case Detection::NO_TARGET:
+            ++statistics.no_target_total;
+            break;
+        case Detection::ERROR:
+        default:
+            ++statistics.errors_total;
+            ++statistics.errors_interval;
+            break;
+    }
+}
+
+void GreenLightDetectorNode::publishDiagnostics() {
+    const auto current_time = std::chrono::steady_clock::now();
+    const double interval_seconds =
+        std::chrono::duration<double>(current_time - previous_diagnostic_time_).count();
+    previous_diagnostic_time_ = current_time;
+
+    DiagnosticStatistics statistics;
+    {
+        std::lock_guard<std::mutex> lock(diagnostic_mutex_);
+        statistics = diagnostic_statistics_;
+        diagnostic_statistics_.received_interval = 0;
+        diagnostic_statistics_.processed_interval = 0;
+        diagnostic_statistics_.detected_interval = 0;
+        diagnostic_statistics_.errors_interval = 0;
+        diagnostic_statistics_.processing_time_interval = std::chrono::nanoseconds::zero();
+        diagnostic_statistics_.max_processing_time_interval = std::chrono::nanoseconds::zero();
+    }
+
+    const double input_fps =
+        interval_seconds > 0.0
+            ? static_cast<double>(statistics.received_interval) / interval_seconds
+            : 0.0;
+    const double processed_fps =
+        interval_seconds > 0.0
+            ? static_cast<double>(statistics.processed_interval) / interval_seconds
+            : 0.0;
+    const double detected_fps =
+        interval_seconds > 0.0
+            ? static_cast<double>(statistics.detected_interval) / interval_seconds
+            : 0.0;
+    const double detection_ratio = statistics.processed_interval > 0
+                                       ? static_cast<double>(statistics.detected_interval) /
+                                             static_cast<double>(statistics.processed_interval)
+                                       : 0.0;
+    const double average_processing_ms =
+        statistics.processed_interval > 0
+            ? std::chrono::duration<double, std::milli>(statistics.processing_time_interval)
+                      .count() /
+                  static_cast<double>(statistics.processed_interval)
+            : 0.0;
+    const double max_processing_ms =
+        std::chrono::duration<double, std::milli>(statistics.max_processing_time_interval).count();
+    const double last_processed_age_seconds =
+        statistics.last_processed_time == std::chrono::steady_clock::time_point{}
+            ? -1.0
+            : std::chrono::duration<double>(current_time - statistics.last_processed_time).count();
+
+    diagnostic_msgs::msg::DiagnosticArray message;
+    message.header.stamp = now();
+    diagnostic_msgs::msg::DiagnosticStatus status;
+    status.name = std::string(get_fully_qualified_name()) + ": green_light_detector";
+    status.hardware_id = "none";
+    if (statistics.processed_interval == 0) {
+        status.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+        status.message = "no images processed";
+    } else if (statistics.errors_interval > 0) {
+        status.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+        status.message = "image processing errors";
+    } else {
+        status.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+        status.message = "processing";
+    }
+    status.values.push_back(keyValue("input_fps", std::to_string(input_fps)));
+    status.values.push_back(keyValue("processed_fps", std::to_string(processed_fps)));
+    status.values.push_back(keyValue("detected_fps", std::to_string(detected_fps)));
+    status.values.push_back(keyValue("detection_ratio", std::to_string(detection_ratio)));
+    status.values.push_back(
+        keyValue("average_processing_ms", std::to_string(average_processing_ms)));
+    status.values.push_back(keyValue("max_processing_ms", std::to_string(max_processing_ms)));
+    status.values.push_back(
+        keyValue("last_processed_age_sec", std::to_string(last_processed_age_seconds)));
+    status.values.push_back(
+        keyValue("images_received_total", std::to_string(statistics.received_total)));
+    status.values.push_back(
+        keyValue("frames_processed_total", std::to_string(statistics.processed_total)));
+    status.values.push_back(keyValue("detected_total", std::to_string(statistics.detected_total)));
+    status.values.push_back(keyValue("closed_total", std::to_string(statistics.closed_total)));
+    status.values.push_back(
+        keyValue("no_target_total", std::to_string(statistics.no_target_total)));
+    status.values.push_back(keyValue("errors_total", std::to_string(statistics.errors_total)));
+    message.status.push_back(std::move(status));
+    diagnostics_publisher_->publish(message);
 }
 } // namespace dart_vision::camera
