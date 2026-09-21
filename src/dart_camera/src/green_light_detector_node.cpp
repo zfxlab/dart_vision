@@ -7,6 +7,7 @@
 #include <diagnostic_msgs/msg/key_value.hpp>
 #include <functional>
 #include <opencv2/core.hpp>
+#include <rclcpp_components/register_node_macro.hpp>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -374,3 +375,5 @@ void GreenLightDetectorNode::publishDiagnostics() {
     diagnostics_publisher_->publish(message);
 }
 } // namespace dart_vision::camera
+
+RCLCPP_COMPONENTS_REGISTER_NODE(dart_vision::camera::GreenLightDetectorNode)
