@@ -2,10 +2,11 @@
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
-from launch_ros.actions import Node
+from launch_ros.actions import LoadComposableNodes, Node
+from launch_ros.descriptions import ComposableNode
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
@@ -43,10 +44,10 @@ def generate_launch_description():
             )
         ),
         condition=IfCondition(start_driver),
-        launch_arguments={"cameras_file": cameras_file}.items(),
+        launch_arguments={"cameras_file": cameras_file, "use_composition": "true"}.items(),
     )
 
-    detector_nodes = [
+    standalone_detector_nodes = [
         Node(
             package="dart_camera",
             executable="green_light_detector_node",
@@ -55,6 +56,25 @@ def generate_launch_description():
             output="screen",
             emulate_tty=True,
             parameters=[detector_params_file, {"use_sim_time": use_sim_time}],
+            condition=UnlessCondition(start_driver),
+        )
+        for namespace in ("left_camera", "right_camera")
+    ]
+
+    detector_components = [
+        LoadComposableNodes(
+            target_container=f"/{namespace}/camera_pipeline",
+            condition=IfCondition(start_driver),
+            composable_node_descriptions=[
+                ComposableNode(
+                    package="dart_camera",
+                    plugin="dart_vision::camera::GreenLightDetectorNode",
+                    namespace=f"/{namespace}",
+                    name="green_light_detector",
+                    parameters=[detector_params_file, {"use_sim_time": use_sim_time}],
+                    extra_arguments=[{"use_intra_process_comms": True}],
+                )
+            ],
         )
         for namespace in ("left_camera", "right_camera")
     ]
@@ -99,7 +119,8 @@ def generate_launch_description():
             ),
             description_launch,
             camera_launch,
-            *detector_nodes,
+            *standalone_detector_nodes,
+            *detector_components,
             stereo_node,
         ]
     )
