@@ -17,10 +17,10 @@ cameras:
   - enabled: true
     namespace: left_camera
     node_name: driver
-    serial_number: 00DA1701234
+    serial_number: 00DA1923275
     camera_name: camera
     frame_id: left_camera_optical_frame
-    camera_info_url: "calibration/00DA1701234.yaml"
+    camera_info_url: "calibration/00DA1923275.yaml"
 
   - enabled: true
     namespace: right_camera
