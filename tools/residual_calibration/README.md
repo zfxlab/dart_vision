@@ -34,10 +34,10 @@ uv pip install --python .venv/bin/python -r requirements-uv.lock
 - 坐标系为 `stereo_camera_center_link`，距离为其原点到绿灯中心的空间直线距离。
 - 表格中的距离单位是米，角度单位是度，向右为正。
 - 计算角必须是**未加入 `dart_offset_rad` 的几何角**，计算值不得已经应用残差补偿。当前 `/aim_command` 包含补偿，不能不加区分地直接抄录为几何角。
-- 一个测量位置的一次采集对应一行，建议记录有效帧均值、帧数和标准差。
+- 一个测量位置的一次测量对应一行。
 - 用不同编号标识重复采集。验证集按位置或采集批次保留，不要将同一位置的相邻帧随机拆分。
 - 距离、角度可以分别填写；某项缺少计算值或参考值时，该行不参与该项拟合。
-- 标准差只作记录，第一版各测量点等权拟合，不自动按帧数或标准差加权。
+- 各测量点等权拟合。
 
 CSV 英文列名：
 
@@ -48,8 +48,6 @@ CSV 英文列名：
 | split | train 拟合、validation 验证、excluded 排除 |
 | distance_calc_m / distance_ref_m | 计算 / 实测距离 |
 | yaw_calc_deg / yaw_ref_deg | 计算 / 实测几何角 |
-| sample_count | 可选，采集帧数 |
-| distance_std_m / yaw_std_deg | 可选，计算值标准差 |
 | notes | 备注或排除原因 |
 
 CSV 支持 UTF-8 和 UTF-8 BOM。示例在 [examples/measurements.csv](examples/measurements.csv)。

@@ -122,7 +122,7 @@ def main():
             format_func=MODELS.get,
             key="model_yaw",
         )
-        st.caption("使用完整映射：修正值 = f(计算值)。标准差仅用于记录，第一版按测量点等权拟合。")
+        st.caption("使用完整映射：修正值 = f(计算值)。各测量点等权拟合。")
 
     project = state.project
     project["name"] = state.project_name.strip() or "未命名测量项目"
@@ -145,9 +145,6 @@ def main():
         "distance_ref_m": st.column_config.NumberColumn("实测距离 / m", format="%.5f"),
         "yaw_calc_deg": st.column_config.NumberColumn("计算角度 / °", format="%.5f"),
         "yaw_ref_deg": st.column_config.NumberColumn("实测角度 / °", format="%.5f"),
-        "sample_count": st.column_config.NumberColumn("帧数", step=1),
-        "distance_std_m": st.column_config.NumberColumn("距离标准差 / m", format="%.5f"),
-        "yaw_std_deg": st.column_config.NumberColumn("角度标准差 / °", format="%.5f"),
         "notes": st.column_config.TextColumn("备注 / 排除原因", width="large"),
     }
     edited = st.data_editor(

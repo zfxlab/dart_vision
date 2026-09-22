@@ -13,9 +13,6 @@ NUMBER_COLUMNS = [
     "distance_ref_m",
     "yaw_calc_deg",
     "yaw_ref_deg",
-    "sample_count",
-    "distance_std_m",
-    "yaw_std_deg",
 ]
 COLUMNS = ["sample_id", "session", "split", *NUMBER_COLUMNS, "notes"]
 MODELS = {"identity": "不补偿", "offset": "常量修正", "linear": "线性修正", "quadratic": "二次修正"}
@@ -76,12 +73,6 @@ def validate(frame):
         for column in ("yaw_calc_deg", "yaw_ref_deg"):
             if pd.notna(row[column]) and abs(row[column]) > 180:
                 errors.append(f"{label}：角度必须在 [-180, 180] 度内。")
-        for column in ("distance_std_m", "yaw_std_deg"):
-            if pd.notna(row[column]) and row[column] < 0:
-                errors.append(f"{label}：标准差不能为负数。")
-        count = row["sample_count"]
-        if pd.notna(count) and (count < 1 or not np.isfinite(count) or count % 1):
-            errors.append(f"{label}：帧数必须为正整数。")
         for calc, ref, title, _ in DIMENSIONS.values():
             if pd.isna(row[calc]) != pd.isna(row[ref]) and row["split"] != "excluded":
                 notices.append(f"{label}：{title}缺少计算值或参考值，此行不参与该项拟合。")
