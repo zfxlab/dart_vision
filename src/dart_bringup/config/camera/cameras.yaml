@@ -29,3 +29,19 @@ cameras:
     camera_name: camera
     frame_id: right_camera_optical_frame
     camera_info_url: "calibration/00DA1923281.yaml"
+
+  - enabled: false
+    namespace: center_camera
+    node_name: driver
+    serial_number: 00DA1701234
+    camera_name: camera
+    frame_id: center_camera_optical_frame
+    camera_info_url: "calibration/00DA1701234.yaml"
+
+  - enabled: false
+    namespace: extra_camera
+    node_name: driver
+    serial_number: 00DA1923282
+    camera_name: camera
+    frame_id: extra_camera_optical_frame
+    camera_info_url: "calibration/00DA1923282.yaml"
