@@ -6,3 +6,7 @@
 	path = third_party/dart_description
 	url = git@github.com:zfxlab/dart_description.git
 	branch = stereo
+[submodule "tools/residual_calibration"]
+	path = tools/residual_calibration
+	url = git@github.com:zfxlab/dart_residual_calibration.git
+	branch = main

@@ -1,5 +1,0 @@
-.venv/
-.local_data/
-__pycache__/
-*.py[cod]
-.ruff_cache/
