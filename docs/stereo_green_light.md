@@ -17,7 +17,7 @@ hik_camera_driver -> dart_camera (left/right) -> dart_stereo -> dart_aiming -> d
 | 消息 | Topic | 时间与数据约定 |
 |---|---|---|
 | GreenLightDetection | /left_camera/detection、/right_camera/detection | header 原样复制图像；center_u/v、radius_px 单位 px；score 是圆拟合得分，不是概率 |
-| StereoTarget | /camera/stereo_target | 左右图像时间戳中点；position 单位 m，位于 stereo_camera_center_link；ray_gap_m 是射线间距 |
+| StereoTarget | /camera/stereo_target | 左右图像时间戳中点；position 单位 m，位于 header.frame_id（默认 stereo_camera_center_link）；distance 为该原点到目标的三维距离（m），yaw 为右正水平偏转角（rad）；ray_gap_m 是射线间距 |
 | ControllerState | /controller_state | 主机接收时间；target_mode、dart_offset_rad、launcher_yaw_rad |
 | AimCommand | /aim_command | 指令生成时间；yaw_error_rad 右正，distance_m 从 launcher_frame 原点测量 |
 
@@ -46,6 +46,7 @@ P_center = (P_L(s) + P_R(q)) / 2
 通过最小化两条射线间距求 s、q，所有求交和位置检查均在固定板中心坐标系进行。
 min_depth_m 限制从各自光心沿射线前进的距离；max_distance_m 限制从固定板中心到目标的距离。
 目标必须在中心前方（x > 0），射线方向本身不按中心 z 分量判断前后。
+`StereoTarget.distance = norm(position)`，`StereoTarget.yaw = -atan2(position.y, position.x)`，二者仅在 VALID 时有效，其他状态为零。yaw 不包含飞镖偏角补偿，参考系使用 x 前、y 左、z 上的约定。
 当前 URDF 给出的光心位置为左 (0.04, 0.15, 0.015) m、右 (0.04, -0.15, 0.015) m。
 算法直接使用 TF，不要求两个相机完全平行或安装偏移完全对称。
 

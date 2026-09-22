@@ -237,6 +237,8 @@ void StereoTriangulatorNode::processPair(const GreenLightDetection& left,
     message.position.x = result->position_m[0];
     message.position.y = result->position_m[1];
     message.position.z = result->position_m[2];
+    message.distance = std::hypot(message.position.x, message.position.y, message.position.z);
+    message.yaw = -std::atan2(message.position.y, message.position.x);
     message.ray_gap_m = static_cast<float>(result->ray_gap_m);
     result_publisher_->publish(message);
 }

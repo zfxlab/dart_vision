@@ -8,4 +8,10 @@ uint8 INVALID=2
 uint8 status 2
 # 仅在 VALID 状态下有效；三维位置位于 header.frame_id 指定的坐标系中，单位为米。
 geometry_msgs/Point position
+# header.frame_id 原点到目标的三维直线距离，单位为米；仅 VALID 时有效，其他状态为零。
+float64 distance
+# 相对 header.frame_id 的 +x 轴的水平偏转角，单位为弧度，向右为正。
+# 坐标系约定 x 前、y 左、z 上；yaw = -atan2(position.y, position.x)。
+# 不包含飞镖偏角补偿；仅 VALID 时有效，其他状态为零。
+float64 yaw
 float32 ray_gap_m
