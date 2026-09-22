@@ -12,8 +12,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from tools.residual_calibration.fitting import DIMENSIONS, SPLITS, evaluate, formula, metric_rows
-from tools.residual_calibration.storage import corrected_frame, csv_bytes, project_bytes, yaml_bytes
+
+from fitting import DIMENSIONS, SPLITS, evaluate, formula, metric_rows
+from storage import corrected_frame, csv_bytes, project_bytes, yaml_bytes
 
 COLORS = {"train": "#2563eb", "validation": "#059669", "excluded": "#94a3b8"}
 SYMBOLS = {"train": "circle", "validation": "diamond", "excluded": "x"}

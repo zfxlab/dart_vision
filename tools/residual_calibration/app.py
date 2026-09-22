@@ -4,10 +4,11 @@ import sys
 from pathlib import Path
 
 # 支持从任意目录通过 streamlit run app.py 启动。
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import streamlit as st
-from tools.residual_calibration.fitting import (
+
+from fitting import (
     COLUMNS,
     DIMENSIONS,
     MODELS,
@@ -20,8 +21,8 @@ from tools.residual_calibration.fitting import (
     records_from_frame,
     validate,
 )
-from tools.residual_calibration.plotting import export_bundle, figures, metric_table
-from tools.residual_calibration.storage import (
+from plotting import export_bundle, figures, metric_table
+from storage import (
     compensation_document,
     csv_bytes,
     list_drafts,

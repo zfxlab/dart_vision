@@ -11,7 +11,8 @@ from pathlib import Path
 
 import pandas as pd
 import yaml
-from tools.residual_calibration.fitting import (
+
+from fitting import (
     DIMENSIONS,
     MODELS,
     evaluate,

@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 calibration_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-project_dir="$(cd -- "$calibration_dir/../.." && pwd)"
-calibration_python="$project_dir/.venv/bin/python"
+calibration_python="$calibration_dir/.venv/bin/python"
 if [[ ! -x "$calibration_python" ]]; then
-    echo "未找到项目根目录的 .venv，请先按 tools/residual_calibration/README.md 安装项目依赖。" >&2
+    echo "未找到工具目录的 .venv，请先按 README.md 安装依赖。" >&2
     exit 1
 fi
 exec "$calibration_python" -m streamlit run "$calibration_dir/app.py" \

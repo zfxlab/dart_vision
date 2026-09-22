@@ -4,10 +4,12 @@
 
 ## 启动
 
-在项目根目录执行（本机工具依赖已经安装）：
+首次使用时，在工具目录创建独立环境并安装依赖：
 
 ```bash
-bash tools/residual_calibration/run.sh
+uv venv .venv --python python3.12
+uv pip install --python .venv/bin/python -r requirements-uv.lock
+bash run.sh
 ```
 
 浏览器访问 **http://127.0.0.1:8501**。终端 `Ctrl+C` 停止。首次体验可在侧栏展开“打开项目 / 导入数据”，点击“载入演示数据”，然后“执行拟合”。演示数据为合成数据，不能用于实机补偿。
@@ -15,25 +17,16 @@ bash tools/residual_calibration/run.sh
 更换端口：
 
 ```bash
-bash tools/residual_calibration/run.sh --server.port=8502
+bash run.sh --server.port=8502
 ```
 
-工具与项目共用根目录的 `.venv`（Python 3.12），依赖统一维护在根目录 `requirements-uv.in` / `requirements-uv.lock`。
-新环境在项目根目录安装；已有 `.venv` 时只需执行安装命令：
-
-```bash
-uv venv .venv --python python3.12
-uv pip install --python .venv/bin/python -r requirements-uv.lock
-```
-
-也可使用 Python 自带 venv 创建根目录 `.venv`，再用 pip 安装 `requirements-uv.lock`。
-启动脚本根据自身位置定位项目环境，因此不需要手动激活环境。
+工具使用自身目录下的 `.venv`（Python 3.12），依赖由本仓库的 `requirements-uv.in` 和 `requirements-uv.lock` 维护。也可以使用 Python 自带的 venv 创建 `.venv`，再用 pip 安装锁定文件。启动脚本根据自身位置定位环境，因此不需要手动激活。
 
 ## 现场记录约定
 
-- 坐标系为 `stereo_camera_center_link`，距离为其原点到绿灯中心的空间直线距离。
+- 坐标系为 `launcher_frame`，距离为其原点到绿灯中心的空间直线距离。
 - 表格中的距离单位是米，角度单位是度，向右为正。
-- 计算角必须是**未加入 `dart_offset_rad` 的几何角**，计算值不得已经应用残差补偿。当前 `/aim_command` 包含补偿，不能不加区分地直接抄录为几何角。
+- 计算角必须是**未加入 `dart_offset_rad` 的几何角**，计算值不得已经应用残差补偿。当前 `/aim_command.yaw_error_rad` 已加入 `dart_offset_rad`，不能直接抄录为未补偿的几何角。
 - 一个测量位置的一次测量对应一行。
 - 用不同编号标识重复采集。验证集按位置或采集批次保留，不要将同一位置的相邻帧随机拆分。
 - 距离、角度可以分别填写；某项缺少计算值或参考值时，该行不参与该项拟合。
@@ -121,5 +114,6 @@ YAML 记录模型版本、坐标系、原始记录指纹、训练范围、指标
 - `fitting.py`：数据校验、拟合、角度环绕、独立验证和过期判断。
 - `storage.py`：CSV / JSON、原子草稿保存、模型导出。
 - `plotting.py`：交互图表、离线 HTML 报告、PNG 和 ZIP。
-- `run.sh`：使用项目根目录 `.venv` 启动工具。
+- `run.sh`：使用工具目录下的 `.venv` 启动工具。
+- `requirements-uv.in` / `requirements-uv.lock`：独立 Python 环境的直接依赖与锁定依赖。
 - `examples/`：示例测量数据。
