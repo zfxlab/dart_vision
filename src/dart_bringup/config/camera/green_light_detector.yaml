@@ -14,8 +14,8 @@
       min_green_excess: 25.0
 
     geometry:
-      min_radius_px: 12.0
-      max_radius_px: 18.0
+      min_radius_px: 13.0
+      max_radius_px: 19.0
       min_circularity: 0.7
       max_aspect_ratio: 1.55
       min_fill_ratio: 0.45
