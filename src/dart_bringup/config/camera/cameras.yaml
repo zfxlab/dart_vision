@@ -10,7 +10,7 @@ defaults:
   exposure_time: 3000.0
   auto_gain: false
   gain: 0.0
-  frame_rate: 60.0
+  frame_rate: 100.0
   trigger_mode: "off"
 
 cameras:
