@@ -1,6 +1,6 @@
 defaults:
   transport: usb
-  output_encoding: rgb8
+  output_encoding: bgr8
   use_sensor_data_qos: true
   grab_timeout_ms: 1000
   reconnect_interval_ms: 1000
