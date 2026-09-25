@@ -4,26 +4,27 @@
 
 ```text
 hik_camera_driver -> dart_camera (left/right) -> dart_stereo -> dart_aiming -> dart_serial
-                          image pixels          3D point      AimCommand       |
+                          unit rays          3D point      AimCommand       |
                                                                   ^            |
                                                                   + ControllerState
 ```
 
-- `dart_camera`：仅检测原始全幅图像中的绿灯，发布 `GreenLightDetection`，不读取内参、不计算视线。多个候选拟合分数接近时报告 NO_TARGET。
-- `dart_stereo`：接收左右检测结果与标准 `CameraInfo`，去畸变、计算视线、近似时间配对和三角测量，通过 URDF 的 TF 将两个光心和视线统一到双目中心，在该坐标系内三角测量并发布 `StereoTarget`。
+- `dart_camera`：检测原始全幅图像中的绿灯，使用同帧 `CameraInfo` 去畸变并计算单位射线，发布 `GreenLightDetection`。多个候选拟合分数接近时报告 NO_TARGET。
+- `dart_stereo`：接收左右单位射线，进行近似时间配对和三角测量，通过 URDF 的 TF 将两个光心和视线统一到双目中心，在该坐标系内三角测量并发布 `StereoTarget`。
 - `dart_aiming`：接收三维测量和控制器消息，通过测量时刻的 TF 将目标转换到 launcher_frame，计算距离和偏转角，确认连续测量后发布 `AimCommand`。使用 C++，算法核心与 ROS 节点分开。
 - `dart_serial`：串口协议字节布局保持不变，负责 ROS 字段与线协议字段的映射。
 
 | 消息 | Topic | 时间与数据约定 |
 |---|---|---|
-| GreenLightDetection | /left_camera/detection、/right_camera/detection | header 原样复制图像；center_u/v、radius_px 单位 px；score 是圆拟合得分，不是概率 |
+| GreenLightDetection | /left_camera/detection、/right_camera/detection | header 原样复制图像；unit_ray 是光学坐标系中的无量纲单位方向，模长为 1，仅 DETECTED 有效，其他状态为零向量；score 是圆拟合得分，不是概率 |
 | StereoTarget | /camera/stereo_target | 左右图像时间戳中点；position 单位 m，位于 header.frame_id（默认 stereo_camera_center_link）；distance 为该原点到目标的三维距离（m），yaw 为右正水平偏转角（rad）；ray_gap_m 是射线间距 |
 | ControllerState | /controller_state | 主机接收时间；target_mode、dart_offset_rad、launcher_yaw_rad |
 | AimCommand | /aim_command | 指令生成时间；yaw_error_rad 右正，distance_m 从 launcher_frame 原点测量 |
 
 检测消息默认 ERROR=3，双目和瞄准消息默认 INVALID=2，避免默认构造被解释成关门。坐标字段只在 DETECTED / VALID 时可用。
 每张输入图像产生检测消息，header 原样复制。无图像不会伪造 CLOSED。
-没有收到对应图像时间戳的 CameraInfo 时不使用别帧内参猜测，等待短时间后在处理配对时报告 INVALID；驱动为图像和 CameraInfo 设置相同时间戳。
+`dart_camera` 按时间戳精确匹配图像和 `CameraInfo`，支持任意到达顺序。最多缓存 10 张图像，等待 200 ms（每 20 ms 检查）；超时或队列溢出时仍处理图像，但检测到目标而缺少有效内参则报告 ERROR，双目配对后报告 INVALID。CLOSED / NO_TARGET 不依赖内参。驱动为图像和 CameraInfo 设置相同时间戳。
+相机参数使用 `detection_topic: detection`、`camera_info_topic: camera_info`；双目参数继续使用 `left_detection_topic` / `right_detection_topic`。话题名和消息类型名保持不变，仅将消息中的像素字段替换为单位射线 `unit_ray`；外部订阅者和历史录包需要适配新的消息字段。
 
 ## 标定与坐标
 
@@ -139,6 +140,15 @@ ros2 launch dart_bringup vision_system.launch.py
 ros2 topic echo /camera/stereo_target
 ros2 topic echo /aim_command
 ```
+
+完成构建并 source 工作空间后，可运行无硬件的 ROS 集成回归：
+
+```bash
+ROS_DOMAIN_ID=173 /usr/bin/python3 tools/tests/test_unit_ray_pipeline.py
+```
+
+测试覆盖图像与内参到达顺序、去畸变后的单位方向、缺失或无效标定、检测状态、
+不依赖 CameraInfo 的双目三角测量，以及非单位/非有限/反向射线的拒绝。
 
 ## dart_aiming C++ 结构
 

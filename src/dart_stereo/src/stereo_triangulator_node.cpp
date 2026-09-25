@@ -15,6 +15,14 @@ double stampSeconds(const std_msgs::msg::Header& header) {
     return rclcpp::Time(header.stamp).seconds();
 }
 
+std::optional<cv::Vec3d> bearing(const dart_interfaces::msg::GreenLightDetection& detection) {
+    const auto& ray = detection.unit_ray;
+    const double norm = std::hypot(ray.x, ray.y, ray.z);
+    if (!std::isfinite(norm) || std::abs(norm - 1.0) > 1e-6 || ray.z <= 0.0)
+        return std::nullopt;
+    return cv::Vec3d{ray.x, ray.y, ray.z};
+}
+
 } // namespace
 
 StereoTriangulatorNode::StereoTriangulatorNode(const rclcpp::NodeOptions& options)
@@ -37,24 +45,6 @@ StereoTriangulatorNode::StereoTriangulatorNode(const rclcpp::NodeOptions& option
         declare_parameter<std::string>("reference_frame", "stereo_camera_center_link", read_only);
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
     tf_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_);
-    const auto left_info_topic = declare_parameter<std::string>(
-        "left_camera_info_topic", "/left_camera/camera_info", read_only);
-    const auto right_info_topic = declare_parameter<std::string>(
-        "right_camera_info_topic", "/right_camera/camera_info", read_only);
-    left_info_sub_ = create_subscription<Info>(
-        left_info_topic, rclcpp::SensorDataQoS(), [this](Info::ConstSharedPtr msg) {
-            left_infos_.push_back(msg);
-            while (left_infos_.size() > 100)
-                left_infos_.pop_front();
-            matchQueuedObservations();
-        });
-    right_info_sub_ = create_subscription<Info>(
-        right_info_topic, rclcpp::SensorDataQoS(), [this](Info::ConstSharedPtr msg) {
-            right_infos_.push_back(msg);
-            while (right_infos_.size() > 100)
-                right_infos_.pop_front();
-            matchQueuedObservations();
-        });
     max_pair_delta_s_ = declare_parameter<double>("max_pair_delta_s", 0.03, read_only);
     const std::int64_t configured_queue_size = declare_parameter<int>("queue_size", 10, read_only);
 
@@ -123,19 +113,6 @@ void StereoTriangulatorNode::matchQueuedObservations() {
         if (best_delta <= max_pair_delta_s_) {
             const auto left = left_queue_[best_left];
             const auto right = right_queue_[best_right];
-            auto has_info = [](const auto& infos, const auto& detection) {
-                return std::any_of(infos.begin(), infos.end(), [&](const auto& info) {
-                    return info->header.stamp == detection->header.stamp;
-                });
-            };
-            if (left->status == GreenLightDetection::DETECTED &&
-                right->status == GreenLightDetection::DETECTED &&
-                (!has_info(left_infos_, left) || !has_info(right_infos_, right))) {
-                if (now().seconds() -
-                        std::min(stampSeconds(left->header), stampSeconds(right->header)) <
-                    0.2)
-                    return;
-            }
             left_queue_.erase(left_queue_.begin(), left_queue_.begin() + best_left + 1U);
             right_queue_.erase(right_queue_.begin(), right_queue_.begin() + best_right + 1U);
             processPair(*left, *right);
@@ -179,8 +156,8 @@ void StereoTriangulatorNode::processPair(const GreenLightDetection& left,
         return;
     }
 
-    const auto lb = bearing(left, left_infos_);
-    const auto rb = bearing(right, right_infos_);
+    const auto lb = bearing(left);
+    const auto rb = bearing(right);
     if (!lb || !rb) {
         publishFailure(left, right, StereoTarget::INVALID);
         return;
@@ -256,27 +233,4 @@ void StereoTriangulatorNode::publishFailure(const GreenLightDetection& left,
     result_publisher_->publish(message);
 }
 
-std::optional<cv::Vec3d>
-StereoTriangulatorNode::bearing(const GreenLightDetection& detection,
-                                const std::deque<Info::ConstSharedPtr>& infos) {
-    for (auto it = infos.rbegin(); it != infos.rend(); ++it) {
-        const auto& info = **it;
-        if (info.header.stamp != detection.header.stamp)
-            continue;
-        if (info.header.frame_id != detection.header.frame_id ||
-            info.distortion_model != "plumb_bob" || info.width == 0 || info.height == 0 ||
-            !std::isfinite(detection.center_u) || !std::isfinite(detection.center_v) ||
-            detection.center_u < 0 || detection.center_v < 0 || detection.center_u >= info.width ||
-            detection.center_v >= info.height || info.binning_x > 1 || info.binning_y > 1 ||
-            info.roi.x_offset || info.roi.y_offset)
-            return std::nullopt;
-        BearingSolverConfig config;
-        config.camera_matrix = info.k;
-        config.distortion_coefficients = info.d;
-        if (!config.isConfigValid())
-            return std::nullopt;
-        return BearingSolver(config).calculateUnitBearing({detection.center_u, detection.center_v});
-    }
-    return std::nullopt;
-}
 } // namespace dart_vision::stereo

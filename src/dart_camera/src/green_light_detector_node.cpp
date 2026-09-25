@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cv_bridge/cv_bridge.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_msgs/msg/key_value.hpp>
@@ -12,6 +13,7 @@
 #include <string>
 #include <utility>
 
+#include "dart_camera/bearing_solver.hpp"
 #include "dart_interfaces/msg/green_light_detection.hpp"
 
 namespace dart_vision::camera {
@@ -54,6 +56,17 @@ GreenLightDetectorNode::GreenLightDetectorNode(const rclcpp::NodeOptions& option
         create_publisher<diagnostic_msgs::msg::DiagnosticArray>("/diagnostics", rclcpp::QoS(10));
     diagnostics_timer_ = create_wall_timer(
         std::chrono::seconds(1), std::bind(&GreenLightDetectorNode::publishDiagnostics, this));
+    camera_info_subscription_ = create_subscription<sensor_msgs::msg::CameraInfo>(
+        get_parameter("camera_info_topic").as_string(),
+        rclcpp::SensorDataQoS(),
+        [this](sensor_msgs::msg::CameraInfo::ConstSharedPtr info) {
+            camera_infos_.push_back(std::move(info));
+            while (camera_infos_.size() > 100)
+                camera_infos_.pop_front();
+            processPendingImages();
+        });
+    camera_info_timer_ =
+        create_wall_timer(std::chrono::milliseconds(20), [this] { processPendingImages(); });
     image_subscription_ = create_subscription<sensor_msgs::msg::Image>(
         image_topic_,
         rclcpp::SensorDataQoS(),
@@ -75,6 +88,7 @@ void GreenLightDetectorNode::declareParameters() {
 
     declare_parameter<std::string>("image_topic", "image_raw", read_only);
     declare_parameter<std::string>("detection_topic", "detection", read_only);
+    declare_parameter<std::string>("camera_info_topic", "camera_info", read_only);
     declare_parameter<std::string>("debug_mask_topic", "~/debug/mask", read_only);
     declare_parameter<bool>("publish_debug_mask", false);
     declare_parameter<double>("ambiguity_margin", 0.05, read_only);
@@ -145,7 +159,8 @@ GreenLightDetectorNode::onParametersChanged(const std::vector<rclcpp::Parameter>
                 updated_publish_debug_mask = parameter.as_bool();
                 continue;
             }
-            if (name == "image_topic" || name == "detection_topic" || name == "debug_mask_topic") {
+            if (name == "image_topic" || name == "detection_topic" || name == "camera_info_topic" ||
+                name == "debug_mask_topic") {
                 return parameterFailure(name + " cannot be changed while the node is running");
             }
 
@@ -217,13 +232,41 @@ GreenLightDetectorNode::onParametersChanged(const std::vector<rclcpp::Parameter>
 }
 
 void GreenLightDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr& image) {
-    using Detection = dart_interfaces::msg::GreenLightDetection;
-    const auto processing_start = std::chrono::steady_clock::now();
     {
         std::lock_guard<std::mutex> lock(diagnostic_mutex_);
         ++diagnostic_statistics_.received_total;
         ++diagnostic_statistics_.received_interval;
     }
+    pending_images_.push_back({image, std::chrono::steady_clock::now()});
+    processPendingImages();
+}
+
+void GreenLightDetectorNode::processPendingImages() {
+    while (!pending_images_.empty()) {
+        const auto& pending = pending_images_.front();
+        const auto found =
+            std::find_if(camera_infos_.begin(), camera_infos_.end(), [&](const auto& info) {
+                return info->header.stamp == pending.image->header.stamp;
+            });
+        if (found == camera_infos_.end() && pending_images_.size() <= 10 &&
+            std::chrono::steady_clock::now() - pending.received < std::chrono::milliseconds(200))
+            return;
+        const auto image = pending.image;
+        sensor_msgs::msg::CameraInfo::ConstSharedPtr info;
+        if (found != camera_infos_.end()) {
+            info = *found;
+            camera_infos_.erase(found);
+        }
+        pending_images_.pop_front();
+        processImage(image, info);
+    }
+}
+
+void GreenLightDetectorNode::processImage(
+    const sensor_msgs::msg::Image::ConstSharedPtr& image,
+    const sensor_msgs::msg::CameraInfo::ConstSharedPtr& info) {
+    using Detection = dart_interfaces::msg::GreenLightDetection;
+    const auto processing_start = std::chrono::steady_clock::now();
     Detection message;
     message.header = image->header;
     std::shared_ptr<GreenLightDetector> detector;
@@ -236,6 +279,9 @@ void GreenLightDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstS
     try {
         const auto converted = cv_bridge::toCvShare(image, "bgr8");
         auto result = detector->detect(converted->image);
+        if (debug)
+            debug_mask_publisher_->publish(
+                *cv_bridge::CvImage(image->header, "mono8", result.binary_mask).toImageMsg());
         auto& candidates = result.candidates;
         std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
             return a.fit_score > b.fit_score;
@@ -246,17 +292,32 @@ void GreenLightDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstS
             message.status = Detection::NO_TARGET;
         } else if (!candidates.empty()) {
             const auto& target = candidates.front();
+            if (!info || info->header.frame_id.empty() ||
+                info->header.frame_id != image->header.frame_id || info->width != image->width ||
+                info->height != image->height || info->distortion_model != "plumb_bob" ||
+                info->binning_x > 1 || info->binning_y > 1 || info->roi.x_offset ||
+                info->roi.y_offset || (info->roi.width && info->roi.width != image->width) ||
+                (info->roi.height && info->roi.height != image->height) ||
+                !std::isfinite(target.center_px.x) || !std::isfinite(target.center_px.y) ||
+                target.center_px.x < 0 || target.center_px.y < 0 ||
+                target.center_px.x >= image->width || target.center_px.y >= image->height)
+                throw std::runtime_error("Missing or incompatible CameraInfo for target image");
+            BearingSolverConfig config;
+            config.camera_matrix = info->k;
+            config.distortion_coefficients = info->d;
+            const auto ray = BearingSolver(config).calculateUnitBearing(target.center_px);
+            if (!ray)
+                throw std::runtime_error("Cannot calculate target unit ray");
             message.status = Detection::DETECTED;
-            message.center_u = target.center_px.x;
-            message.center_v = target.center_px.y;
-            message.radius_px = target.radius_px;
+            message.unit_ray.x = (*ray)[0];
+            message.unit_ray.y = (*ray)[1];
+            message.unit_ray.z = (*ray)[2];
             message.score = target.fit_score;
         }
-        if (debug)
-            debug_mask_publisher_->publish(
-                *cv_bridge::CvImage(image->header, "mono8", result.binary_mask).toImageMsg());
     } catch (const std::exception& e) {
         message.status = Detection::ERROR;
+        message.unit_ray = geometry_msgs::msg::Vector3{};
+        message.score = 0.0;
         RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "%s", e.what());
     }
     detection_publisher_->publish(message);

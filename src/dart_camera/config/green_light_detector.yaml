@@ -2,6 +2,7 @@
   ros__parameters:
     image_topic: image_raw
     detection_topic: detection
+    camera_info_topic: camera_info
     debug_mask_topic: "~/mask"
     publish_debug_mask: true
 

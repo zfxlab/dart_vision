@@ -1,12 +1,12 @@
-#ifndef DART_STEREO_BEARING_SOLVER_HPP
-#define DART_STEREO_BEARING_SOLVER_HPP
+#ifndef DART_CAMERA_BEARING_SOLVER_HPP
+#define DART_CAMERA_BEARING_SOLVER_HPP
 
 #include <array>
 #include <opencv2/core.hpp>
 #include <optional>
 #include <vector>
 
-namespace dart_vision::stereo {
+namespace dart_vision::camera {
 
 /// 像素视线计算所需的相机标定参数。
 struct BearingSolverConfig {
@@ -38,6 +38,6 @@ private:
     cv::Mat distortion_coefficients_;
 };
 
-} // namespace dart_vision::stereo
+} // namespace dart_vision::camera
 
-#endif // DART_STEREO_BEARING_SOLVER_HPP
+#endif // DART_CAMERA_BEARING_SOLVER_HPP

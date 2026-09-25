@@ -1,10 +1,10 @@
-#include "dart_stereo/bearing_solver.hpp"
+#include "dart_camera/bearing_solver.hpp"
 
 #include <cmath>
 #include <opencv2/calib3d.hpp>
 #include <stdexcept>
 
-namespace dart_vision::stereo {
+namespace dart_vision::camera {
 
 bool BearingSolverConfig::isConfigValid() const noexcept {
     for (const double value : camera_matrix) {
@@ -17,6 +17,10 @@ bool BearingSolverConfig::isConfigValid() const noexcept {
         return false;
     }
 
+    const auto count = distortion_coefficients.size();
+    if (count != 0 && count != 4 && count != 5 && count != 8 && count != 12 && count != 14) {
+        return false;
+    }
     for (const double coefficient : distortion_coefficients) {
         if (!std::isfinite(coefficient)) {
             return false;
@@ -69,4 +73,4 @@ BearingSolver::calculateUnitBearing(const cv::Point2f& center_px) const noexcept
     }
 }
 
-} // namespace dart_vision::stereo
+} // namespace dart_vision::camera
