@@ -5,6 +5,7 @@
 #include <functional>
 #include <geometry_msgs/msg/vector3_stamped.hpp>
 #include <limits>
+#include <rclcpp/logging.hpp>
 #include <stdexcept>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <utility>
@@ -195,14 +196,34 @@ void StereoTriangulatorNode::processPair(const GreenLightDetection& left,
                              error.what());
         return;
     }
-    const auto result =
-        triangulator_->triangulate(left_origin, left_direction, right_origin, right_direction);
+    StereoTriangulationDiagnostics diagnostics;
+    const auto result = triangulator_->triangulate(
+        left_origin, left_direction, right_origin, right_direction, &diagnostics);
     if (!result) {
         publishFailure(left, right, StereoTarget::INVALID);
         RCLCPP_WARN_THROTTLE(get_logger(),
                              *get_clock(),
-                             2000,
-                             "Stereo triangulation rejected the paired viewing rays");
+                             200,
+                             "Stereo triangulation rejected: reason=%s, pair_delta=%.6f s, "
+                             "baseline=%.6f m, "
+                             "ray_angle=%.6f deg, left_depth=%.6f m, right_depth=%.6f m, "
+                             "ray_gap=%.6f m, distance=%.6f m, midpoint_x=%.6f m, "
+                             "left_dir=[%.6f, %.6f, %.6f], right_dir=[%.6f, %.6f, %.6f]",
+                             stereoTriangulationRejectionName(diagnostics.rejection),
+                             std::abs(stampSeconds(left.header) - stampSeconds(right.header)),
+                             diagnostics.baseline_m,
+                             diagnostics.ray_angle_deg,
+                             diagnostics.left_distance_m,
+                             diagnostics.right_distance_m,
+                             diagnostics.ray_gap_m,
+                             diagnostics.distance_m,
+                             diagnostics.midpoint_x_m,
+                             left_direction[0],
+                             left_direction[1],
+                             left_direction[2],
+                             right_direction[0],
+                             right_direction[1],
+                             right_direction[2]);
         return;
     }
 
