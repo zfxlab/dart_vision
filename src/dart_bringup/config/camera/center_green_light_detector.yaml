@@ -1,0 +1,33 @@
+/**:
+  ros__parameters:
+    image_topic: image_raw
+    detection_topic: detection
+    camera_info_topic: camera_info
+    debug_mask_topic: "~/mask"
+    publish_debug_mask: false
+    ambiguity_margin: 0.05
+
+    segmentation:
+      min_hue: 35.0
+      max_hue: 95.0
+      min_saturation: 45.0
+      min_value: 100.0
+      min_green_excess: 25.0
+
+    geometry:
+      min_radius_px: 8.0
+      max_radius_px: 14.0
+      min_circularity: 0.7
+      max_aspect_ratio: 1.55
+      min_fill_ratio: 0.45
+
+    photometry:
+      min_inner_brightness: 100.0
+      min_contrast_ratio: 1.5
+
+    mask_cleanup:
+      close_kernel_size: 3
+      close_iterations: 1
+      open_kernel_size: 0
+      open_iterations: 1
+      fill_holes: true
