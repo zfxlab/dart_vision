@@ -16,14 +16,7 @@ distortion_model: plumb_bob
 distortion_coefficients:
   rows: 1
   cols: 5
-  data:
-    [
-      0.4639928123413632,
-      -163.19845533406675,
-      -0.0033908381394588214,
-      0.0034823057976936605,
-      0.0,
-    ]
+  data: [0.0, 0.0, 0.0, 0.0, 0.0]
 # prettier-ignore
 rectification_matrix:
   rows: 3
