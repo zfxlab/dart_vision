@@ -2,7 +2,7 @@
 <package format="3">
   <name>dart_aiming</name>
   <version>0.0.0</version>
-  <description>C++ green-light aiming with TF conversion to the launcher frame.</description>
+  <description>C++ green-light aiming with TF conversion and optional RViz markers.</description>
   <maintainer email="fzhang859@connect.hkust-gz.edu.cn">pnx</maintainer>
   <license>MIT</license>
   <buildtool_depend>ament_cmake</buildtool_depend>
@@ -14,6 +14,7 @@
   <depend>tf2</depend>
   <depend>tf2_ros</depend>
   <depend>tf2_geometry_msgs</depend>
+  <depend>visualization_msgs</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

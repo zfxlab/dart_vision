@@ -14,12 +14,22 @@ find_package(geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
 
 add_library(aiming_core src/aiming_core.cpp)
 target_include_directories(aiming_core PUBLIC include)
 add_executable(aiming_node src/aiming_main.cpp src/aiming_node.cpp)
 target_link_libraries(aiming_node aiming_core)
-ament_target_dependencies(aiming_node rclcpp rcl_interfaces dart_interfaces geometry_msgs tf2 tf2_ros tf2_geometry_msgs)
+ament_target_dependencies(
+  aiming_node
+  rclcpp
+  rcl_interfaces
+  dart_interfaces
+  geometry_msgs
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+  visualization_msgs)
 
 install(TARGETS aiming_core aiming_node
   ARCHIVE DESTINATION lib

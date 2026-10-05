@@ -8,6 +8,7 @@
 #include <rclcpp/create_timer.hpp>
 #include <stdexcept>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <visualization_msgs/msg/marker.hpp>
 
 namespace dart_vision::aiming {
 
@@ -21,6 +22,12 @@ AimingNode::AimingNode(const rclcpp::NodeOptions& options) : Node("aiming", opti
         declare_parameter<std::string>("controller_topic", "/controller_state", read_only);
     const auto command_topic =
         declare_parameter<std::string>("command_topic", "/aim_command", read_only);
+    enable_visualization_ = declare_parameter<bool>("enable_visualization", false, read_only);
+    const auto visualization_topic =
+        declare_parameter<std::string>("visualization_topic", "/aiming/markers", read_only);
+    marker_lifetime_s_ = declare_parameter<double>("marker_lifetime_s", 0.3, read_only);
+    target_marker_radius_m_ = declare_parameter<double>("target_marker_radius_m", 0.08, read_only);
+    marker_line_width_m_ = declare_parameter<double>("marker_line_width_m", 0.02, read_only);
     reference_frame_ =
         declare_parameter<std::string>("reference_frame", "launcher_frame", read_only);
     target_timeout_s_ = declare_parameter<double>("target_timeout_s", 0.2, read_only);
@@ -32,12 +39,18 @@ AimingNode::AimingNode(const rclcpp::NodeOptions& options) : Node("aiming", opti
         "supported_target_modes", {1, 2, 3, 4}, read_only);
     const auto positive = [](double v) { return std::isfinite(v) && v > 0.0; };
     if (reference_frame_.empty() || stereo_topic.empty() || controller_topic.empty() ||
-        command_topic.empty() || !positive(target_timeout_s_) || !positive(controller_timeout_s_))
+        command_topic.empty() || !positive(target_timeout_s_) || !positive(controller_timeout_s_) ||
+        (enable_visualization_ &&
+         (visualization_topic.empty() || !positive(marker_lifetime_s_) ||
+          !positive(target_marker_radius_m_) || !positive(marker_line_width_m_))))
         throw std::invalid_argument("Invalid aiming node configuration");
     stability_ = std::make_unique<Stability>(frames, yaw_step, distance_step);
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
     tf_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_);
     publisher_ = create_publisher<AimCommand>(command_topic, 10);
+    if (enable_visualization_)
+        visualization_publisher_ =
+            create_publisher<visualization_msgs::msg::MarkerArray>(visualization_topic, 10);
     controller_subscription_ = create_subscription<ControllerState>(
         controller_topic,
         rclcpp::SensorDataQoS(),
@@ -51,6 +64,8 @@ AimingNode::AimingNode(const rclcpp::NodeOptions& options) : Node("aiming", opti
                                   rclcpp::Duration::from_seconds(0.02),
                                   std::bind(&AimingNode::tick, this));
     RCLCPP_INFO(get_logger(), "Aiming output frame: '%s'", reference_frame_.c_str());
+    if (enable_visualization_)
+        RCLCPP_INFO(get_logger(), "Aiming visualization topic: '%s'", visualization_topic.c_str());
 }
 
 bool AimingNode::fresh(const builtin_interfaces::msg::Time& stamp, double timeout) const {
@@ -60,6 +75,7 @@ bool AimingNode::fresh(const builtin_interfaces::msg::Time& stamp, double timeou
 
 void AimingNode::invalidate(bool preserve_closed) {
     stability_->reset();
+    clearVisualization();
     if (preserve_closed && command_ && command_->state == AimCommand::CLOSED)
         return;
     command_.reset();
@@ -110,6 +126,7 @@ void AimingNode::onTarget(StereoTarget::ConstSharedPtr target) {
     // CLOSED 是视觉状态，不需要控制器反馈或坐标变换。
     if (target->status == StereoTarget::CLOSED) {
         stability_->reset();
+        clearVisualization();
         command_.emplace();
         command_->state = AimCommand::CLOSED;
         target_stamp_ = target->header.stamp;
@@ -151,7 +168,87 @@ void AimingNode::onTarget(StereoTarget::ConstSharedPtr target) {
     }
     command_ = command;
     target_stamp_ = target->header.stamp;
+    publishVisualization(
+        target->header.stamp, p, command.state == AimCommand::VALID ? &*aim : nullptr);
     tick();
+}
+
+void AimingNode::publishVisualization(const builtin_interfaces::msg::Time& stamp,
+                                      const geometry_msgs::msg::Point& target,
+                                      const Aim* confirmed_aim) {
+    if (!visualization_publisher_)
+        return;
+
+    using Marker = visualization_msgs::msg::Marker;
+    visualization_msgs::msg::MarkerArray markers;
+    const auto makeMarker = [&](const int id, const int type) {
+        Marker marker;
+        marker.header.stamp = stamp;
+        marker.header.frame_id = reference_frame_;
+        marker.ns = "dart_aiming";
+        marker.id = id;
+        marker.type = type;
+        marker.action = Marker::ADD;
+        marker.pose.orientation.w = 1.0;
+        marker.lifetime = rclcpp::Duration::from_seconds(marker_lifetime_s_);
+        return marker;
+    };
+
+    auto point = makeMarker(0, Marker::SPHERE);
+    point.pose.position = target;
+    const double diameter = 2.0 * target_marker_radius_m_;
+    point.scale.x = diameter;
+    point.scale.y = diameter;
+    point.scale.z = diameter;
+    point.color.r = 0.1F;
+    point.color.g = 1.0F;
+    point.color.b = 0.1F;
+    point.color.a = 1.0F;
+    markers.markers.push_back(point);
+
+    geometry_msgs::msg::Point origin;
+    auto measurement = makeMarker(1, Marker::LINE_STRIP);
+    measurement.scale.x = marker_line_width_m_;
+    measurement.color.r = 0.1F;
+    measurement.color.g = 1.0F;
+    measurement.color.b = 0.1F;
+    measurement.color.a = 0.8F;
+    measurement.points = {origin, target};
+    markers.markers.push_back(measurement);
+
+    auto aim = makeMarker(2, Marker::ARROW);
+    if (confirmed_aim) {
+        geometry_msgs::msg::Point endpoint;
+        endpoint.x = confirmed_aim->distance_m * std::cos(confirmed_aim->yaw_error_rad);
+        endpoint.y = -confirmed_aim->distance_m * std::sin(confirmed_aim->yaw_error_rad);
+        aim.scale.x = marker_line_width_m_;
+        aim.scale.y = 2.5 * marker_line_width_m_;
+        aim.scale.z = 3.0 * marker_line_width_m_;
+        aim.color.r = 1.0F;
+        aim.color.g = 0.1F;
+        aim.color.b = 0.1F;
+        aim.color.a = 1.0F;
+        aim.points = {origin, endpoint};
+    } else {
+        aim.action = Marker::DELETE;
+    }
+    markers.markers.push_back(aim);
+
+    visualization_publisher_->publish(markers);
+    markers_visible_ = true;
+}
+
+void AimingNode::clearVisualization() {
+    if (!visualization_publisher_ || !markers_visible_)
+        return;
+    visualization_msgs::msg::Marker marker;
+    marker.header.stamp = now();
+    marker.header.frame_id = reference_frame_;
+    marker.action = visualization_msgs::msg::Marker::DELETEALL;
+    visualization_msgs::msg::MarkerArray markers;
+    markers.markers.push_back(marker);
+    visualization_publisher_->publish(markers);
+    markers_visible_ = false;
 }
 
 void AimingNode::tick() {

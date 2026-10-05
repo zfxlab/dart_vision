@@ -67,6 +67,8 @@ yaw_error_rad = wrap_to_pi(-atan2(P_reference.y, P_reference.x) + dart_offset_ra
 有效目标缺少对应时刻 TF 时发布 INVALID，不使用最新 TF 代替历史变换；CLOSED 仍不依赖 TF 和控制器。
 反馈 launcher_yaw_rad 保留原始电机角度，serial 按 motor_to_joint_sign 与 motor_zero_rad 转为 JointState。
 目标保持在双目中心坐标系中，aiming 不再次减去电机反馈角。双目坐标系与发射方向之间的安装角偏差需要通过 `dart_offset_rad` 或标定结果补偿。
+
+`enable_visualization` 启用后，`dart_aiming` 在 `/aiming/markers` 发布 RViz MarkerArray：绿色球体和连线表示测量目标，连续帧确认后的红色箭头表示加入偏角补偿的最终瞄准方向。目标无效、关闭或超时时会清除旧 Marker。RViz 配置由使用者自行设置。
 `camera_system.launch.py` 直接启动驱动、检测和双目节点，默认通过 description 启动 robot_state_publisher。
 若已有外部 TF 发布节点，可设置 `start_description:=false`；完整链路也支持该选项。关闭后仍需外部提供双目计算所需的 TF。
 
