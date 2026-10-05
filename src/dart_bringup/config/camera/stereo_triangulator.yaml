@@ -2,16 +2,19 @@
   ros__parameters:
     left_detection_topic: /left_camera/detection
     right_detection_topic: /right_camera/detection
+    left_camera_info_topic: /left_camera/camera_info
+    right_camera_info_topic: /right_camera/camera_info
     result_topic: stereo_target
     left_frame_id: left_camera_optical_frame
     right_frame_id: right_camera_optical_frame
-    # 两个光心和视线均通过 TF 转换到此坐标系，再进行三角测量。
+    # 平行双目水平模型的输出坐标系：x 前、y 左、z=0。
     reference_frame: stereo_camera_center_link
 
     max_pair_delta_s: 0.03
     queue_size: 10
 
-    min_ray_angle_deg: 0.05
-    min_depth_m: 0.5
+    baseline_m: 0.3
+    min_normalized_disparity: 0.000001
+    min_distance_m: 0.5
     max_distance_m: 30.0
-    max_ray_gap_m: 0.1
+    max_vertical_residual: 0.002
