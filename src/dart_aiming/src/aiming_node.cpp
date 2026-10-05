@@ -136,7 +136,7 @@ void AimingNode::onTarget(StereoTarget::ConstSharedPtr target) {
         return;
     }
     const auto& p = transformed.point;
-    // 输出已相对发射架，不再次减去电机反馈角。
+    // 输出已位于配置的参考坐标系，不再次减去电机反馈角。
     const auto aim = solve(p.x, p.y, p.z, controller_->dart_offset_rad);
     if (!aim || aim->distance_m > std::numeric_limits<float>::max()) {
         invalidate();

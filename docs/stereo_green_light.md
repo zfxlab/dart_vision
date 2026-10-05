@@ -11,7 +11,7 @@ hik_camera_driver -> dart_camera (left/right) -> dart_stereo -> dart_aiming -> d
 
 - `dart_camera`：检测原始图像中的绿灯，发布亮度加权像素中心和外接圆半径，不依赖 `CameraInfo`。
 - `dart_stereo`：配对左右像素观测，从各自 `CameraInfo.K` 读取焦距和主点，根据基线和归一化视差计算水平位置并发布 `StereoTarget`。
-- `dart_aiming`：接收水平目标测量和控制器消息，通过测量时刻的 TF 将目标转换到 launcher_frame，计算水平距离和偏转角，确认连续测量后发布 `AimCommand`。使用 C++，算法核心与 ROS 节点分开。
+- `dart_aiming`：接收水平目标测量和控制器消息，在 `stereo_camera_center_link` 中计算水平距离和偏转角，确认连续测量后发布 `AimCommand`。使用 C++，算法核心与 ROS 节点分开。
 - `dart_serial`：串口协议字节布局保持不变，负责 ROS 字段与线协议字段的映射。
 
 | 消息 | Topic | 时间与数据约定 |
@@ -19,7 +19,7 @@ hik_camera_driver -> dart_camera (left/right) -> dart_stereo -> dart_aiming -> d
 | GreenLightDetection | /left_camera/detection、/right_camera/detection | header 原样复制图像；center_x_px、center_y_px 和 radius_px 仅在 DETECTED 时有效 |
 | StereoTarget | /camera/stereo_target | 左右图像时间戳中点；position 为双目中心水平坐标，x 前、y 左、z=0；distance 为水平距离，yaw 向右为正 |
 | ControllerState | /controller_state | 主机接收时间；target_mode、dart_offset_rad、launcher_yaw_rad |
-| AimCommand | /aim_command | 指令生成时间；yaw_error_rad 右正，distance_m 为 launcher_frame 的 XY 平面水平距离 |
+| AimCommand | /aim_command | 指令生成时间；yaw_error_rad 右正，distance_m 为 stereo_camera_center_link 的 XY 平面水平距离 |
 
 检测消息默认 ERROR=3，双目和瞄准消息默认 INVALID=2，避免默认构造被解释成关门。坐标字段只在 DETECTED / VALID 时可用。
 每张输入图像产生检测消息，header 原样复制。无图像不会伪造 CLOSED。
@@ -53,20 +53,20 @@ min_depth_m 限制从各自光心沿射线前进的距离；max_distance_m 限�
 
 当前双目配置要求左右图像时间差不超过 0.03 s、视线夹角不小于 0.05°、沿两条视线的前向深度不小于 0.5 m、目标到固定板中心的距离不超过 30 m，并且两条异面视线的最近距离不超过 0.1 m。
 
-`dart_stereo` 的 `reference_frame` 为 `stereo_camera_center_link`，`dart_aiming` 的输出 `reference_frame` 为 `launcher_frame`。
+`dart_stereo` 和 `dart_aiming` 的 `reference_frame` 均为 `stereo_camera_center_link`。
 任一相机缺少 TF 时双目发布 INVALID；CLOSED 不需要 TF。
-瞄准节点按输入的 header.frame_id 查询目标测量时刻的 TF，将位置转换到发射架参考系：
+瞄准节点按输入的 header.frame_id 查询目标测量时刻的 TF，将位置转换到配置的输出参考系：
 
 ```text
-P_launcher = T_launcher_input * P_input
-distance_m = hypot(P_launcher.x, P_launcher.y)
-yaw_error_rad = wrap_to_pi(-atan2(P_launcher.y, P_launcher.x) + dart_offset_rad)
+P_reference = T_reference_input * P_input
+distance_m = hypot(P_reference.x, P_reference.y)
+yaw_error_rad = wrap_to_pi(-atan2(P_reference.y, P_reference.x) + dart_offset_rad)
 ```
 
-位置变换同时包含旋转和平移。输出 frame_id 为 launcher_frame，距离从发射架原点量起，偏转角相对发射架 x 轴且向右为正。
+位置变换同时包含旋转和平移。当前输出 frame_id 为 `stereo_camera_center_link`，距离从双目中心量起，偏转角相对双目中心坐标系 x 轴且向右为正。
 有效目标缺少对应时刻 TF 时发布 INVALID，不使用最新 TF 代替历史变换；CLOSED 仍不依赖 TF 和控制器。
 反馈 launcher_yaw_rad 保留原始电机角度，serial 按 motor_to_joint_sign 与 motor_zero_rad 转为 JointState。
-目标已经转换到发射架坐标系，aiming 不再次减去电机反馈角。安装外参由 dart_description 的 TF 提供；其名义尺寸也需要实机核对。
+目标保持在双目中心坐标系中，aiming 不再次减去电机反馈角。双目坐标系与发射方向之间的安装角偏差需要通过 `dart_offset_rad` 或标定结果补偿。
 `camera_system.launch.py` 直接启动驱动、检测和双目节点，默认通过 description 启动 robot_state_publisher。
 若已有外部 TF 发布节点，可设置 `start_description:=false`；完整链路也支持该选项。关闭后仍需外部提供双目计算所需的 TF。
 

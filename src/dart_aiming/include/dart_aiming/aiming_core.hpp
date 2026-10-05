@@ -5,7 +5,7 @@
 
 namespace dart_vision::aiming {
 
-/// 发射架坐标系中的瞄准结果，角度单位为弧度，距离单位为米。
+/// 输出参考坐标系中的瞄准结果，角度单位为弧度，距离单位为米。
 struct Aim {
     double yaw_error_rad{};
     double distance_m{};
