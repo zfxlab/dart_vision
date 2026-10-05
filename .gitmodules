@@ -10,3 +10,6 @@
 	path = tools/residual_calibration
 	url = git@github.com:zfxlab/dart_residual_calibration.git
 	branch = main
+[submodule "third_party/livox_ros2_driver"]
+	path = third_party/livox_ros2_driver
+	url = git@github.com:zfxlab/livox_ros2_driver.git
