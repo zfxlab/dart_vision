@@ -11,7 +11,7 @@ hik_camera_driver -> dart_camera (left/right) -> dart_stereo -> dart_aiming -> d
 
 - `dart_camera`：检测原始图像中的绿灯，发布亮度加权像素中心和外接圆半径，不依赖 `CameraInfo`。
 - `dart_stereo`：配对左右像素观测，从各自 `CameraInfo.K` 读取焦距和主点，根据基线和归一化视差计算水平位置并发布 `StereoTarget`。
-- `dart_aiming`：接收三维测量和控制器消息，通过测量时刻的 TF 将目标转换到 launcher_frame，计算距离和偏转角，确认连续测量后发布 `AimCommand`。使用 C++，算法核心与 ROS 节点分开。
+- `dart_aiming`：接收水平目标测量和控制器消息，通过测量时刻的 TF 将目标转换到 launcher_frame，计算水平距离和偏转角，确认连续测量后发布 `AimCommand`。使用 C++，算法核心与 ROS 节点分开。
 - `dart_serial`：串口协议字节布局保持不变，负责 ROS 字段与线协议字段的映射。
 
 | 消息 | Topic | 时间与数据约定 |
@@ -19,7 +19,7 @@ hik_camera_driver -> dart_camera (left/right) -> dart_stereo -> dart_aiming -> d
 | GreenLightDetection | /left_camera/detection、/right_camera/detection | header 原样复制图像；center_x_px、center_y_px 和 radius_px 仅在 DETECTED 时有效 |
 | StereoTarget | /camera/stereo_target | 左右图像时间戳中点；position 为双目中心水平坐标，x 前、y 左、z=0；distance 为水平距离，yaw 向右为正 |
 | ControllerState | /controller_state | 主机接收时间；target_mode、dart_offset_rad、launcher_yaw_rad |
-| AimCommand | /aim_command | 指令生成时间；yaw_error_rad 右正，distance_m 从 launcher_frame 原点测量 |
+| AimCommand | /aim_command | 指令生成时间；yaw_error_rad 右正，distance_m 为 launcher_frame 的 XY 平面水平距离 |
 
 检测消息默认 ERROR=3，双目和瞄准消息默认 INVALID=2，避免默认构造被解释成关门。坐标字段只在 DETECTED / VALID 时可用。
 每张输入图像产生检测消息，header 原样复制。无图像不会伪造 CLOSED。
@@ -59,7 +59,7 @@ min_depth_m 限制从各自光心沿射线前进的距离；max_distance_m 限�
 
 ```text
 P_launcher = T_launcher_input * P_input
-distance_m = norm(P_launcher)
+distance_m = hypot(P_launcher.x, P_launcher.y)
 yaw_error_rad = wrap_to_pi(-atan2(P_launcher.y, P_launcher.x) + dart_offset_rad)
 ```
 

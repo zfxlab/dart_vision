@@ -15,7 +15,7 @@ std::optional<Aim> solve(double x, double y, double z, double offset_rad) noexce
     if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z) || !std::isfinite(offset_rad) ||
         x <= 0.0)
         return std::nullopt;
-    const double distance = std::hypot(x, y, z);
+    const double distance = std::hypot(x, y);
     if (!std::isfinite(distance))
         return std::nullopt;
     return Aim{wrapAngle(-std::atan2(y, x) + offset_rad), distance};
