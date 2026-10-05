@@ -13,7 +13,6 @@
 #include <string>
 #include <utility>
 
-#include "dart_camera/bearing_solver.hpp"
 #include "dart_interfaces/msg/green_light_detection.hpp"
 
 namespace dart_vision::camera {
@@ -45,28 +44,13 @@ GreenLightDetectorNode::GreenLightDetectorNode(const rclcpp::NodeOptions& option
 
     image_topic_ = get_parameter("image_topic").as_string();
     detection_topic_ = get_parameter("detection_topic").as_string();
-    debug_mask_topic_ = get_parameter("debug_mask_topic").as_string();
-    publish_debug_mask_ = get_parameter("publish_debug_mask").as_bool();
 
     detection_publisher_ = create_publisher<dart_interfaces::msg::GreenLightDetection>(
         detection_topic_, rclcpp::SensorDataQoS());
-    debug_mask_publisher_ =
-        create_publisher<sensor_msgs::msg::Image>(debug_mask_topic_, rclcpp::SensorDataQoS());
     diagnostics_publisher_ =
         create_publisher<diagnostic_msgs::msg::DiagnosticArray>("/diagnostics", rclcpp::QoS(10));
     diagnostics_timer_ = create_wall_timer(
         std::chrono::seconds(1), std::bind(&GreenLightDetectorNode::publishDiagnostics, this));
-    camera_info_subscription_ = create_subscription<sensor_msgs::msg::CameraInfo>(
-        get_parameter("camera_info_topic").as_string(),
-        rclcpp::SensorDataQoS(),
-        [this](sensor_msgs::msg::CameraInfo::ConstSharedPtr info) {
-            camera_infos_.push_back(std::move(info));
-            while (camera_infos_.size() > 100)
-                camera_infos_.pop_front();
-            processPendingImages();
-        });
-    camera_info_timer_ =
-        create_wall_timer(std::chrono::milliseconds(20), [this] { processPendingImages(); });
     image_subscription_ = create_subscription<sensor_msgs::msg::Image>(
         image_topic_,
         rclcpp::SensorDataQoS(),
@@ -88,10 +72,7 @@ void GreenLightDetectorNode::declareParameters() {
 
     declare_parameter<std::string>("image_topic", "image_raw", read_only);
     declare_parameter<std::string>("detection_topic", "detection", read_only);
-    declare_parameter<std::string>("camera_info_topic", "camera_info", read_only);
-    declare_parameter<std::string>("debug_mask_topic", "~/debug/mask", read_only);
-    declare_parameter<bool>("publish_debug_mask", false);
-    declare_parameter<double>("ambiguity_margin", 0.05, read_only);
+    declare_parameter<double>("ambiguity_margin", defaults.ambiguity_margin, read_only);
 
     declare_parameter<double>("segmentation.min_hue", defaults.min_hue);
     declare_parameter<double>("segmentation.max_hue", defaults.max_hue);
@@ -129,6 +110,7 @@ GreenLightDetectorConfig GreenLightDetectorNode::readGreenLightDetectorConfig() 
     config.min_fill_ratio = get_parameter("geometry.min_fill_ratio").as_double();
     config.min_inner_brightness = get_parameter("photometry.min_inner_brightness").as_double();
     config.min_contrast_ratio = get_parameter("photometry.min_contrast_ratio").as_double();
+    config.ambiguity_margin = get_parameter("ambiguity_margin").as_double();
     config.cleanup.close_kernel_size =
         static_cast<int>(get_parameter("mask_cleanup.close_kernel_size").as_int());
     config.cleanup.close_iterations =
@@ -145,22 +127,15 @@ rcl_interfaces::msg::SetParametersResult
 GreenLightDetectorNode::onParametersChanged(const std::vector<rclcpp::Parameter>& parameters) {
     GreenLightDetectorConfig updated;
     bool green_light_detector_config_changed = false;
-    bool updated_publish_debug_mask = false;
     {
         std::lock_guard<std::mutex> lock(green_light_detector_mutex_);
         updated = green_light_detector_config_;
-        updated_publish_debug_mask = publish_debug_mask_;
     }
 
     try {
         for (const auto& parameter : parameters) {
             const std::string& name = parameter.get_name();
-            if (name == "publish_debug_mask") {
-                updated_publish_debug_mask = parameter.as_bool();
-                continue;
-            }
-            if (name == "image_topic" || name == "detection_topic" || name == "camera_info_topic" ||
-                name == "debug_mask_topic") {
+            if (name == "image_topic" || name == "detection_topic" || name == "ambiguity_margin") {
                 return parameterFailure(name + " cannot be changed while the node is running");
             }
 
@@ -223,7 +198,6 @@ GreenLightDetectorNode::onParametersChanged(const std::vector<rclcpp::Parameter>
             green_light_detector_config_ = updated;
             green_light_detector_ = std::move(updated_green_light_detector);
         }
-        publish_debug_mask_ = updated_publish_debug_mask;
     }
 
     rcl_interfaces::msg::SetParametersResult result;
@@ -237,87 +211,41 @@ void GreenLightDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstS
         ++diagnostic_statistics_.received_total;
         ++diagnostic_statistics_.received_interval;
     }
-    pending_images_.push_back({image, std::chrono::steady_clock::now()});
-    processPendingImages();
+    processImage(image);
 }
 
-void GreenLightDetectorNode::processPendingImages() {
-    while (!pending_images_.empty()) {
-        const auto& pending = pending_images_.front();
-        const auto found =
-            std::find_if(camera_infos_.begin(), camera_infos_.end(), [&](const auto& info) {
-                return info->header.stamp == pending.image->header.stamp;
-            });
-        if (found == camera_infos_.end() && pending_images_.size() <= 10 &&
-            std::chrono::steady_clock::now() - pending.received < std::chrono::milliseconds(200))
-            return;
-        const auto image = pending.image;
-        sensor_msgs::msg::CameraInfo::ConstSharedPtr info;
-        if (found != camera_infos_.end()) {
-            info = *found;
-            camera_infos_.erase(found);
-        }
-        pending_images_.pop_front();
-        processImage(image, info);
-    }
-}
-
-void GreenLightDetectorNode::processImage(
-    const sensor_msgs::msg::Image::ConstSharedPtr& image,
-    const sensor_msgs::msg::CameraInfo::ConstSharedPtr& info) {
+void GreenLightDetectorNode::processImage(const sensor_msgs::msg::Image::ConstSharedPtr& image) {
     using Detection = dart_interfaces::msg::GreenLightDetection;
     const auto processing_start = std::chrono::steady_clock::now();
     Detection message;
     message.header = image->header;
     std::shared_ptr<GreenLightDetector> detector;
-    bool debug;
     {
         std::lock_guard<std::mutex> lock(green_light_detector_mutex_);
         detector = green_light_detector_;
-        debug = publish_debug_mask_;
     }
     try {
         const auto converted = cv_bridge::toCvShare(image, "bgr8");
-        auto result = detector->detect(converted->image);
-        if (debug)
-            debug_mask_publisher_->publish(
-                *cv_bridge::CvImage(image->header, "mono8", result.binary_mask).toImageMsg());
-        auto& candidates = result.candidates;
-        std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
-            return a.fit_score > b.fit_score;
-        });
-        message.status = result.contours_count == 0 ? Detection::CLOSED : Detection::NO_TARGET;
-        if (candidates.size() > 1 && candidates[0].fit_score - candidates[1].fit_score <
-                                         get_parameter("ambiguity_margin").as_double()) {
-            message.status = Detection::NO_TARGET;
-        } else if (!candidates.empty()) {
-            const auto& target = candidates.front();
-            if (!info || info->header.frame_id.empty() ||
-                info->header.frame_id != image->header.frame_id || info->width != image->width ||
-                info->height != image->height || info->distortion_model != "plumb_bob" ||
-                info->binning_x > 1 || info->binning_y > 1 || info->roi.x_offset ||
-                info->roi.y_offset || (info->roi.width && info->roi.width != image->width) ||
-                (info->roi.height && info->roi.height != image->height) ||
-                !std::isfinite(target.center_px.x) || !std::isfinite(target.center_px.y) ||
-                target.center_px.x < 0 || target.center_px.y < 0 ||
-                target.center_px.x >= image->width || target.center_px.y >= image->height)
-                throw std::runtime_error("Missing or incompatible CameraInfo for target image");
-            BearingSolverConfig config;
-            config.camera_matrix = info->k;
-            config.distortion_coefficients = info->d;
-            const auto ray = BearingSolver(config).calculateUnitBearing(target.center_px);
-            if (!ray)
-                throw std::runtime_error("Cannot calculate target unit ray");
+        const auto result = detector->detect(converted->image);
+        message.status = result.has_contours ? Detection::NO_TARGET : Detection::CLOSED;
+        if (result.target) {
+            const auto& target = *result.target;
+            if (!std::isfinite(target.center_px.x) || !std::isfinite(target.center_px.y) ||
+                !std::isfinite(target.radius_px) || target.center_px.x < 0.0F ||
+                target.center_px.y < 0.0F ||
+                target.center_px.x >= static_cast<float>(image->width) ||
+                target.center_px.y >= static_cast<float>(image->height) || target.radius_px <= 0.0)
+                throw std::runtime_error("Invalid target pixel observation");
             message.status = Detection::DETECTED;
-            message.unit_ray.x = (*ray)[0];
-            message.unit_ray.y = (*ray)[1];
-            message.unit_ray.z = (*ray)[2];
-            message.score = target.fit_score;
+            message.center_x_px = target.center_px.x;
+            message.center_y_px = target.center_px.y;
+            message.radius_px = static_cast<float>(target.radius_px);
         }
     } catch (const std::exception& e) {
         message.status = Detection::ERROR;
-        message.unit_ray = geometry_msgs::msg::Vector3{};
-        message.score = 0.0;
+        message.center_x_px = 0.0F;
+        message.center_y_px = 0.0F;
+        message.radius_px = 0.0F;
         RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "%s", e.what());
     }
     detection_publisher_->publish(message);
