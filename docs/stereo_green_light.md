@@ -168,3 +168,5 @@ bash tools/residual_calibration/run.sh
 ```
 
 浏览器打开 http://127.0.0.1:8501。详细数据约定、项目恢复和导出格式见 [工具说明](../tools/residual_calibration/README.md)。工具不修改实时链路；生成的补偿 YAML 需后续在 C++ 节点中接入后才能生效。
+
+镖架朝向在 `/aiming/markers` 中以蓝色箭头显示，起点为 `launcher_frame` 原点，沿局部 +X 方向延伸 26 m。箭头跟随电机反馈驱动的 TF 更新，不依赖视觉目标；控制器反馈无效或超时后隐藏。需要启用 `enable_visualization` 并运行串口与 robot_state_publisher。红球和黄球旁的数值分别对应拟合结果和最终输出，每组上行为角度（度），下行为距离（米）。

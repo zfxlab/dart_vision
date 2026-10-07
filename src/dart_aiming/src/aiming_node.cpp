@@ -294,30 +294,36 @@ void AimingNode::publishVisualization(const builtin_interfaces::msg::Time& stamp
         final_point.color.a = 1.0F;
         markers.markers.push_back(final_point);
 
-        constexpr double kRadiansToDegrees = 57.29577951308232;
-        auto annotation = makeMarker(4, Marker::TEXT_VIEW_FACING);
-        annotation.pose.position = final_endpoint;
-        annotation.pose.position.z += 3.0 * target_marker_radius_m_;
-        annotation.scale.z = 1.5 * target_marker_radius_m_;
-        annotation.color.r = 1.0F;
-        annotation.color.g = 1.0F;
-        annotation.color.b = 1.0F;
-        annotation.color.a = 1.0F;
-        std::ostringstream label;
-        label << std::fixed << std::setprecision(3)
-              << "fitted: yaw=" << confirmed_fitted_aim->yaw_error_rad * kRadiansToDegrees
-              << " deg, distance=" << confirmed_fitted_aim->distance_m << " m\n"
-              << "with dart offset: yaw="
-              << confirmed_final_aim->yaw_error_rad * kRadiansToDegrees
-              << " deg, distance=" << confirmed_final_aim->distance_m << " m";
-        annotation.text = label.str();
-        markers.markers.push_back(annotation);
+        const auto addAnnotation = [&](const int id,
+                                       const geometry_msgs::msg::Point& endpoint,
+                                       const Aim& aim,
+                                       const double vertical_offset) {
+            constexpr double kRadiansToDegrees = 57.29577951308232;
+            auto annotation = makeMarker(id, Marker::TEXT_VIEW_FACING);
+            annotation.pose.position = endpoint;
+            annotation.pose.position.z += vertical_offset;
+            annotation.scale.z = 1.5 * target_marker_radius_m_;
+            annotation.color.r = 1.0F;
+            annotation.color.g = 1.0F;
+            annotation.color.b = 1.0F;
+            annotation.color.a = 1.0F;
+            std::ostringstream label;
+            // 每组数值依次为角度（度）、距离（米）。
+            label << std::fixed << std::setprecision(3)
+                  << aim.yaw_error_rad * kRadiansToDegrees << '\n' << aim.distance_m;
+            annotation.text = label.str();
+            markers.markers.push_back(annotation);
+        };
+        // 红球上方显示拟合结果，黄球下方显示最终输出，避免两组文字重叠。
+        addAnnotation(4, fitted_endpoint, *confirmed_fitted_aim, 3.0 * target_marker_radius_m_);
+        addAnnotation(7, final_endpoint, *confirmed_final_aim, -3.0 * target_marker_radius_m_);
     } else {
         deleteMarker(2, Marker::ARROW);
         deleteMarker(3, Marker::SPHERE);
         deleteMarker(4, Marker::TEXT_VIEW_FACING);
         deleteMarker(5, Marker::ARROW);
         deleteMarker(6, Marker::SPHERE);
+        deleteMarker(7, Marker::TEXT_VIEW_FACING);
     }
 
     visualization_publisher_->publish(markers);
@@ -327,12 +333,16 @@ void AimingNode::publishVisualization(const builtin_interfaces::msg::Time& stamp
 void AimingNode::clearVisualization() {
     if (!visualization_publisher_ || !markers_visible_)
         return;
-    visualization_msgs::msg::Marker marker;
-    marker.header.stamp = now();
-    marker.header.frame_id = reference_frame_;
-    marker.action = visualization_msgs::msg::Marker::DELETEALL;
     visualization_msgs::msg::MarkerArray markers;
-    markers.markers.push_back(marker);
+    for (int id = 0; id <= 7; ++id) {
+        visualization_msgs::msg::Marker marker;
+        marker.header.stamp = now();
+        marker.header.frame_id = reference_frame_;
+        marker.ns = "dart_aiming";
+        marker.id = id;
+        marker.action = visualization_msgs::msg::Marker::DELETE;
+        markers.markers.push_back(marker);
+    }
     visualization_publisher_->publish(markers);
     markers_visible_ = false;
 }
@@ -342,6 +352,35 @@ void AimingNode::tick() {
         ((!command_ || command_->state != AimCommand::CLOSED) &&
          (!controller_ || !fresh(controller_->header.stamp, controller_timeout_s_))))
         invalidate();
+    if (visualization_publisher_) {
+        // TF 中的 launcher_frame 已包含串口电机角度的符号和零位转换。
+        // 箭头沿镖架局部 +X，随最新 TF 转动，不重复叠加电机角度。
+        visualization_msgs::msg::Marker arrow;
+        arrow.header.stamp = now();
+        arrow.header.frame_id = "launcher_frame";
+        arrow.ns = "launcher_heading";
+        arrow.id = 0;
+        arrow.type = visualization_msgs::msg::Marker::ARROW;
+        arrow.action = controller_ && fresh(controller_->header.stamp, controller_timeout_s_)
+                           ? visualization_msgs::msg::Marker::ADD
+                           : visualization_msgs::msg::Marker::DELETE;
+        arrow.frame_locked = true;
+        arrow.pose.orientation.w = 1.0;
+        arrow.scale.x = marker_line_width_m_;
+        arrow.scale.y = 2.5 * marker_line_width_m_;
+        arrow.scale.z = 3.0 * marker_line_width_m_;
+        arrow.color.r = 0.1F;
+        arrow.color.g = 0.6F;
+        arrow.color.b = 1.0F;
+        arrow.color.a = 1.0F;
+        arrow.lifetime = rclcpp::Duration::from_seconds(marker_lifetime_s_);
+        geometry_msgs::msg::Point origin, endpoint;
+        endpoint.x = 26.0;
+        arrow.points = {origin, endpoint};
+        visualization_msgs::msg::MarkerArray markers;
+        markers.markers.push_back(arrow);
+        visualization_publisher_->publish(markers);
+    }
     AimCommand message;
     message.state = AimCommand::INVALID;
     if (command_)
