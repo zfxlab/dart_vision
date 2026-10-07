@@ -35,7 +35,8 @@ private:
     void onTarget(StereoTarget::ConstSharedPtr target);
     void publishVisualization(const builtin_interfaces::msg::Time& stamp,
                               const geometry_msgs::msg::Point& target,
-                              const Aim* confirmed_aim);
+                              const Aim* confirmed_fitted_aim,
+                              const Aim* confirmed_final_aim);
     void clearVisualization();
     void tick();
 

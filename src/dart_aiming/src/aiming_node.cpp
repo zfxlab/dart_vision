@@ -4,8 +4,10 @@
 #include <cmath>
 #include <functional>
 #include <geometry_msgs/msg/point_stamped.hpp>
+#include <iomanip>
 #include <limits>
 #include <rclcpp/create_timer.hpp>
+#include <sstream>
 #include <stdexcept>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <visualization_msgs/msg/marker.hpp>
@@ -154,28 +156,42 @@ void AimingNode::onTarget(StereoTarget::ConstSharedPtr target) {
     }
     const auto& p = transformed.point;
     // 输出已位于配置的参考坐标系，不再次减去电机反馈角。
-    const auto aim = solve(p.x, p.y, p.z, controller_->dart_offset_rad);
-    if (!aim || aim->distance_m > std::numeric_limits<float>::max()) {
+    const auto geometric_aim = solve(p.x, p.y, p.z);
+    if (!geometric_aim) {
+        invalidate();
+        return;
+    }
+    const auto fitted_aim = applyFittedCorrection(*geometric_aim);
+    if (!fitted_aim) {
+        invalidate();
+        return;
+    }
+    const auto final_aim = applyDartOffset(*fitted_aim, controller_->dart_offset_rad);
+    if (!final_aim || final_aim->distance_m > std::numeric_limits<float>::max()) {
         invalidate();
         return;
     }
     AimCommand command;
     command.state = AimCommand::INVALID;
-    if (stability_->update(*aim)) {
+    if (stability_->update(*final_aim)) {
         command.state = AimCommand::VALID;
-        command.yaw_error_rad = static_cast<float>(aim->yaw_error_rad);
-        command.distance_m = static_cast<float>(aim->distance_m);
+        command.yaw_error_rad = static_cast<float>(final_aim->yaw_error_rad);
+        command.distance_m = static_cast<float>(final_aim->distance_m);
     }
     command_ = command;
     target_stamp_ = target->header.stamp;
-    publishVisualization(
-        target->header.stamp, p, command.state == AimCommand::VALID ? &*aim : nullptr);
+    const bool confirmed = command.state == AimCommand::VALID;
+    publishVisualization(target->header.stamp,
+                         p,
+                         confirmed ? &*fitted_aim : nullptr,
+                         confirmed ? &*final_aim : nullptr);
     tick();
 }
 
 void AimingNode::publishVisualization(const builtin_interfaces::msg::Time& stamp,
                                       const geometry_msgs::msg::Point& target,
-                                      const Aim* confirmed_aim) {
+                                      const Aim* confirmed_fitted_aim,
+                                      const Aim* confirmed_final_aim) {
     if (!visualization_publisher_)
         return;
 
@@ -216,23 +232,93 @@ void AimingNode::publishVisualization(const builtin_interfaces::msg::Time& stamp
     measurement.points = {origin, target};
     markers.markers.push_back(measurement);
 
-    auto aim = makeMarker(2, Marker::ARROW);
-    if (confirmed_aim) {
+    const auto endpointFor = [](const Aim& value) {
         geometry_msgs::msg::Point endpoint;
-        endpoint.x = confirmed_aim->distance_m * std::cos(confirmed_aim->yaw_error_rad);
-        endpoint.y = -confirmed_aim->distance_m * std::sin(confirmed_aim->yaw_error_rad);
-        aim.scale.x = marker_line_width_m_;
-        aim.scale.y = 2.5 * marker_line_width_m_;
-        aim.scale.z = 3.0 * marker_line_width_m_;
-        aim.color.r = 1.0F;
-        aim.color.g = 0.1F;
-        aim.color.b = 0.1F;
-        aim.color.a = 1.0F;
-        aim.points = {origin, endpoint};
+        endpoint.x = value.distance_m * std::cos(value.yaw_error_rad);
+        endpoint.y = -value.distance_m * std::sin(value.yaw_error_rad);
+        return endpoint;
+    };
+    const auto deleteMarker = [&](const int id, const int type) {
+        auto marker = makeMarker(id, type);
+        marker.action = Marker::DELETE;
+        markers.markers.push_back(marker);
+    };
+
+    if (confirmed_fitted_aim && confirmed_final_aim) {
+        const auto fitted_endpoint = endpointFor(*confirmed_fitted_aim);
+        const auto final_endpoint = endpointFor(*confirmed_final_aim);
+
+        // 红色是拟合结果；黄色是随后加入 dart_offset_rad 的最终输出。
+        auto fitted_arrow = makeMarker(2, Marker::ARROW);
+        fitted_arrow.scale.x = marker_line_width_m_;
+        fitted_arrow.scale.y = 2.5 * marker_line_width_m_;
+        fitted_arrow.scale.z = 3.0 * marker_line_width_m_;
+        fitted_arrow.color.r = 1.0F;
+        fitted_arrow.color.g = 0.1F;
+        fitted_arrow.color.b = 0.1F;
+        fitted_arrow.color.a = 1.0F;
+        fitted_arrow.points = {origin, fitted_endpoint};
+        markers.markers.push_back(fitted_arrow);
+
+        auto fitted_point = makeMarker(3, Marker::SPHERE);
+        fitted_point.pose.position = fitted_endpoint;
+        const double result_diameter = 1.5 * target_marker_radius_m_;
+        fitted_point.scale.x = result_diameter;
+        fitted_point.scale.y = result_diameter;
+        fitted_point.scale.z = result_diameter;
+        fitted_point.color.r = 1.0F;
+        fitted_point.color.g = 0.1F;
+        fitted_point.color.b = 0.1F;
+        fitted_point.color.a = 1.0F;
+        markers.markers.push_back(fitted_point);
+
+        auto final_arrow = makeMarker(5, Marker::ARROW);
+        final_arrow.scale.x = marker_line_width_m_;
+        final_arrow.scale.y = 2.0 * marker_line_width_m_;
+        final_arrow.scale.z = 2.5 * marker_line_width_m_;
+        final_arrow.color.r = 1.0F;
+        final_arrow.color.g = 0.75F;
+        final_arrow.color.b = 0.1F;
+        final_arrow.color.a = 0.9F;
+        final_arrow.points = {origin, final_endpoint};
+        markers.markers.push_back(final_arrow);
+
+        auto final_point = makeMarker(6, Marker::SPHERE);
+        final_point.pose.position = final_endpoint;
+        final_point.scale.x = result_diameter;
+        final_point.scale.y = result_diameter;
+        final_point.scale.z = result_diameter;
+        final_point.color.r = 1.0F;
+        final_point.color.g = 0.75F;
+        final_point.color.b = 0.1F;
+        final_point.color.a = 1.0F;
+        markers.markers.push_back(final_point);
+
+        constexpr double kRadiansToDegrees = 57.29577951308232;
+        auto annotation = makeMarker(4, Marker::TEXT_VIEW_FACING);
+        annotation.pose.position = final_endpoint;
+        annotation.pose.position.z += 3.0 * target_marker_radius_m_;
+        annotation.scale.z = 1.5 * target_marker_radius_m_;
+        annotation.color.r = 1.0F;
+        annotation.color.g = 1.0F;
+        annotation.color.b = 1.0F;
+        annotation.color.a = 1.0F;
+        std::ostringstream label;
+        label << std::fixed << std::setprecision(3)
+              << "fitted: yaw=" << confirmed_fitted_aim->yaw_error_rad * kRadiansToDegrees
+              << " deg, distance=" << confirmed_fitted_aim->distance_m << " m\n"
+              << "with dart offset: yaw="
+              << confirmed_final_aim->yaw_error_rad * kRadiansToDegrees
+              << " deg, distance=" << confirmed_final_aim->distance_m << " m";
+        annotation.text = label.str();
+        markers.markers.push_back(annotation);
     } else {
-        aim.action = Marker::DELETE;
+        deleteMarker(2, Marker::ARROW);
+        deleteMarker(3, Marker::SPHERE);
+        deleteMarker(4, Marker::TEXT_VIEW_FACING);
+        deleteMarker(5, Marker::ARROW);
+        deleteMarker(6, Marker::SPHERE);
     }
-    markers.markers.push_back(aim);
 
     visualization_publisher_->publish(markers);
     markers_visible_ = true;
