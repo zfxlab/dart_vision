@@ -68,7 +68,7 @@ yaw_error_rad = wrap_to_pi(-atan2(P_reference.y, P_reference.x) + dart_offset_ra
 反馈 launcher_yaw_rad 保留原始电机角度，serial 按 motor_to_joint_sign 与 motor_zero_rad 转为 JointState。
 目标保持在双目中心坐标系中，aiming 不再次减去电机反馈角。双目坐标系与发射方向之间的安装角偏差需要通过 `dart_offset_rad` 或标定结果补偿。
 
-`enable_visualization` 启用后，`dart_aiming` 在 `/aiming/markers` 发布 RViz MarkerArray：绿色球体和连线表示测量目标，连续帧确认后的红色箭头和球体表示拟合函数输出，黄色箭头和球体表示随后加入 `dart_offset_rad` 的最终瞄准结果，文字显示两者的角度和距离。目标无效、关闭或超时时会清除旧 Marker。拟合入口为 `applyFittedCorrection()`，当前是恒等映射，确定拟合公式后只需替换该函数中的占位计算；`dart_offset_rad` 在拟合之后由 `applyDartOffset()` 加入。RViz 配置由使用者自行设置。
+拟合入口为 `applyFittedCorrection()`，当前是恒等映射，确定拟合公式后只需替换该函数中的占位计算；`dart_offset_rad` 在拟合之后由 `applyDartOffset()` 加入。
 `camera_system.launch.py` 直接启动驱动、检测和双目节点，默认通过 description 启动 robot_state_publisher。
 若已有外部 TF 发布节点，可设置 `start_description:=false`；完整链路也支持该选项。关闭后仍需外部提供双目计算所需的 TF。
 
@@ -168,5 +168,3 @@ bash tools/residual_calibration/run.sh
 ```
 
 浏览器打开 http://127.0.0.1:8501。详细数据约定、项目恢复和导出格式见 [工具说明](../tools/residual_calibration/README.md)。工具不修改实时链路；生成的补偿 YAML 需后续在 C++ 节点中接入后才能生效。
-
-镖架朝向在 `/aiming/markers` 中以蓝色箭头显示，起点为 `launcher_frame` 原点，沿局部 +X 方向延伸 26 m。箭头跟随电机反馈驱动的 TF 更新，不依赖视觉目标；控制器反馈无效或超时后隐藏。需要启用 `enable_visualization` 并运行串口与 robot_state_publisher。红球和黄球旁的数值分别对应拟合结果和最终输出，每组上行为角度（度），下行为距离（米）。

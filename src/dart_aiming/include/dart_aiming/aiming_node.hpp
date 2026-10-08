@@ -2,7 +2,6 @@
 #define DART_AIMING_AIMING_NODE_HPP
 
 #include <cstdint>
-#include <geometry_msgs/msg/point.hpp>
 #include <memory>
 #include <optional>
 #include <rclcpp/rclcpp.hpp>
@@ -15,7 +14,6 @@
 #include "dart_interfaces/msg/aim_command.hpp"
 #include "dart_interfaces/msg/controller_state.hpp"
 #include "dart_interfaces/msg/stereo_target.hpp"
-#include "visualization_msgs/msg/marker_array.hpp"
 
 namespace dart_vision::aiming {
 
@@ -33,18 +31,10 @@ private:
     void invalidate(bool preserve_closed = false);
     void onController(ControllerState::ConstSharedPtr message);
     void onTarget(StereoTarget::ConstSharedPtr target);
-    void publishVisualization(const builtin_interfaces::msg::Time& stamp,
-                              const geometry_msgs::msg::Point& target,
-                              const Aim* confirmed_fitted_aim,
-                              const Aim* confirmed_final_aim);
-    void clearVisualization();
     void tick();
 
     std::string reference_frame_;
     double target_timeout_s_{}, controller_timeout_s_{};
-    bool enable_visualization_{};
-    double marker_lifetime_s_{}, target_marker_radius_m_{}, marker_line_width_m_{};
-    bool markers_visible_{};
     std::vector<std::int64_t> supported_target_modes_;
     std::unique_ptr<Stability> stability_;
     std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
@@ -54,7 +44,6 @@ private:
     std::optional<builtin_interfaces::msg::Time> target_stamp_, last_target_stamp_;
     std::optional<AimCommand> command_;
     rclcpp::Publisher<AimCommand>::SharedPtr publisher_;
-    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr visualization_publisher_;
     rclcpp::Subscription<ControllerState>::SharedPtr controller_subscription_;
     rclcpp::Subscription<StereoTarget>::SharedPtr target_subscription_;
     rclcpp::TimerBase::SharedPtr timer_;

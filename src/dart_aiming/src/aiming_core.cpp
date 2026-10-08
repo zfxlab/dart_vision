@@ -22,7 +22,7 @@ std::optional<Aim> solve(double x, double y, double z) noexcept {
 
 std::optional<Aim> applyFittedCorrection(const Aim& input) noexcept {
     // 在此处填写离线标定得到的拟合函数。input 是尚未加入 dart_offset_rad 的几何解；
-    // corrected 会先显示为 RViz 红色结果，再由 applyDartOffset() 生成最终输出。
+    // corrected 再由 applyDartOffset() 加入固定偏角，生成最终输出。
     Aim corrected = input;
 
     // 示例（确定系数后替换，当前不要启用）：
