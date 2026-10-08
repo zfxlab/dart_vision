@@ -60,9 +60,7 @@ GreenLightDetectorNode::GreenLightDetectorNode(const rclcpp::NodeOptions& option
         get_parameter("camera_info_topic").as_string(),
         rclcpp::SensorDataQoS(),
         [this](sensor_msgs::msg::CameraInfo::ConstSharedPtr info) {
-            camera_infos_.push_back(std::move(info));
-            while (camera_infos_.size() > 100)
-                camera_infos_.pop_front();
+            latest_camera_info_ = std::move(info);
             processPendingImages();
         });
     camera_info_timer_ =
@@ -244,19 +242,12 @@ void GreenLightDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstS
 void GreenLightDetectorNode::processPendingImages() {
     while (!pending_images_.empty()) {
         const auto& pending = pending_images_.front();
-        const auto found =
-            std::find_if(camera_infos_.begin(), camera_infos_.end(), [&](const auto& info) {
-                return info->header.stamp == pending.image->header.stamp;
-            });
-        if (found == camera_infos_.end() && pending_images_.size() <= 10 &&
+        // Calibration is reused across frames; only wait for the initial CameraInfo.
+        if (!latest_camera_info_ && pending_images_.size() <= 10 &&
             std::chrono::steady_clock::now() - pending.received < std::chrono::milliseconds(200))
             return;
         const auto image = pending.image;
-        sensor_msgs::msg::CameraInfo::ConstSharedPtr info;
-        if (found != camera_infos_.end()) {
-            info = *found;
-            camera_infos_.erase(found);
-        }
+        const auto info = latest_camera_info_;
         pending_images_.pop_front();
         processImage(image, info);
     }

@@ -53,9 +53,9 @@ private:
         sensor_msgs::msg::Image::ConstSharedPtr image;
         std::chrono::steady_clock::time_point received;
     };
-    // These queues and their timer use the default mutually exclusive callback group.
+    // The cache, pending queue and timer use the default mutually exclusive callback group.
     std::deque<PendingImage> pending_images_;
-    std::deque<sensor_msgs::msg::CameraInfo::ConstSharedPtr> camera_infos_;
+    sensor_msgs::msg::CameraInfo::ConstSharedPtr latest_camera_info_;
     rclcpp::TimerBase::SharedPtr camera_info_timer_;
     rclcpp::Publisher<dart_interfaces::msg::GreenLightDetection>::SharedPtr detection_publisher_;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr debug_mask_publisher_;
