@@ -16,7 +16,7 @@ AimingNode::AimingNode(const rclcpp::NodeOptions& options) : Node("aiming", opti
     read_only.read_only = true;
     read_only.description = "启动时读取，修改后需要重启节点";
     const auto stereo_topic =
-        declare_parameter<std::string>("stereo_topic", "/camera/stereo_target", read_only);
+        declare_parameter<std::string>("stereo_topic", "/stereo_target", read_only);
     const auto controller_topic =
         declare_parameter<std::string>("controller_topic", "/controller_state", read_only);
     const auto command_topic =

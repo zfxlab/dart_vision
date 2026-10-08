@@ -1,6 +1,6 @@
 /**:
   ros__parameters:
-    stereo_topic: /camera/stereo_target
+    stereo_topic: /stereo_target
     controller_topic: /controller_state
     command_topic: /aim_command
     # 输出参考系：x 前、y 左、z 上。输入按 header.frame_id 通过 TF 转换。

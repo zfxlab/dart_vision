@@ -37,7 +37,7 @@ StereoTriangulatorNode::StereoTriangulatorNode(const rclcpp::NodeOptions& option
     const std::string right_topic = declare_parameter<std::string>(
         "right_detection_topic", "/right_camera/detection", read_only);
     const std::string result_topic =
-        declare_parameter<std::string>("result_topic", "stereo_target", read_only);
+        declare_parameter<std::string>("result_topic", "/stereo_target", read_only);
     left_frame_id_ =
         declare_parameter<std::string>("left_frame_id", "left_camera_optical_frame", read_only);
     right_frame_id_ =

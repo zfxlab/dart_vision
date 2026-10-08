@@ -17,7 +17,7 @@ hik_camera_driver -> dart_camera (left/right) -> dart_stereo -> dart_aiming -> d
 | 消息 | Topic | 时间与数据约定 |
 |---|---|---|
 | GreenLightDetection | /left_camera/detection、/right_camera/detection | header 原样复制图像；unit_ray 是光学坐标系中的无量纲单位方向，模长为 1，仅 DETECTED 有效，其他状态为零向量；score 是圆拟合得分，不是概率 |
-| StereoTarget | /camera/stereo_target | 左右图像时间戳中点；position 单位 m，位于 header.frame_id（默认 stereo_camera_center_link）；distance 为该原点到目标的 XY 平面水平距离（m），yaw 为右正水平偏转角（rad）；height_gap_m 是水平交点处的两条视线高度差 |
+| StereoTarget | /stereo_target | 左右图像时间戳中点；position 单位 m，位于 header.frame_id（默认 stereo_camera_center_link）；distance 为该原点到目标的 XY 平面水平距离（m），yaw 为右正水平偏转角（rad）；height_gap_m 是水平交点处的两条视线高度差 |
 | ControllerState | /controller_state | 主机接收时间；target_mode、dart_offset_rad、launcher_yaw_rad |
 | AimCommand | /aim_command | 指令生成时间；yaw_error_rad 右正，distance_m 为 stereo_camera_center_link 的 XY 平面水平距离 |
 
@@ -143,7 +143,7 @@ ros2 launch dart_bringup vision_system.launch.py
 相机、检测器和双目配置位于 `dart_bringup/config/camera/`，瞄准配置位于 `dart_bringup/config/aiming.yaml`。完整链路默认使用 `dart_serial/config/serial.yaml`。
 
 ```bash
-ros2 topic echo /camera/stereo_target
+ros2 topic echo /stereo_target
 ros2 topic echo /aim_command
 ```
 
