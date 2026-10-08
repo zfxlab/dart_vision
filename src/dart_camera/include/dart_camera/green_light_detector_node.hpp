@@ -42,8 +42,7 @@ private:
         std::chrono::steady_clock::time_point last_processed_time{};
     };
 
-    std::string image_topic_, detection_topic_, debug_mask_topic_;
-    bool publish_debug_mask_{};
+    std::string image_topic_, detection_topic_;
     std::mutex green_light_detector_mutex_;
     GreenLightDetectorConfig green_light_detector_config_;
     std::shared_ptr<GreenLightDetector> green_light_detector_;
@@ -58,7 +57,6 @@ private:
     sensor_msgs::msg::CameraInfo::ConstSharedPtr latest_camera_info_;
     rclcpp::TimerBase::SharedPtr camera_info_timer_;
     rclcpp::Publisher<dart_interfaces::msg::GreenLightDetection>::SharedPtr detection_publisher_;
-    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr debug_mask_publisher_;
     rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diagnostics_publisher_;
     rclcpp::TimerBase::SharedPtr diagnostics_timer_;
     rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr parameter_callback_;

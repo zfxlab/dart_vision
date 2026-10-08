@@ -45,13 +45,9 @@ GreenLightDetectorNode::GreenLightDetectorNode(const rclcpp::NodeOptions& option
 
     image_topic_ = get_parameter("image_topic").as_string();
     detection_topic_ = get_parameter("detection_topic").as_string();
-    debug_mask_topic_ = get_parameter("debug_mask_topic").as_string();
-    publish_debug_mask_ = get_parameter("publish_debug_mask").as_bool();
 
     detection_publisher_ = create_publisher<dart_interfaces::msg::GreenLightDetection>(
         detection_topic_, rclcpp::SensorDataQoS());
-    debug_mask_publisher_ =
-        create_publisher<sensor_msgs::msg::Image>(debug_mask_topic_, rclcpp::SensorDataQoS());
     diagnostics_publisher_ =
         create_publisher<diagnostic_msgs::msg::DiagnosticArray>("/diagnostics", rclcpp::QoS(10));
     diagnostics_timer_ = create_wall_timer(
@@ -87,8 +83,6 @@ void GreenLightDetectorNode::declareParameters() {
     declare_parameter<std::string>("image_topic", "image_raw", read_only);
     declare_parameter<std::string>("detection_topic", "detection", read_only);
     declare_parameter<std::string>("camera_info_topic", "camera_info", read_only);
-    declare_parameter<std::string>("debug_mask_topic", "~/debug/mask", read_only);
-    declare_parameter<bool>("publish_debug_mask", false);
     declare_parameter<double>("ambiguity_margin", 0.05, read_only);
 
     declare_parameter<double>("segmentation.min_hue", defaults.min_hue);
@@ -143,22 +137,15 @@ rcl_interfaces::msg::SetParametersResult
 GreenLightDetectorNode::onParametersChanged(const std::vector<rclcpp::Parameter>& parameters) {
     GreenLightDetectorConfig updated;
     bool green_light_detector_config_changed = false;
-    bool updated_publish_debug_mask = false;
     {
         std::lock_guard<std::mutex> lock(green_light_detector_mutex_);
         updated = green_light_detector_config_;
-        updated_publish_debug_mask = publish_debug_mask_;
     }
 
     try {
         for (const auto& parameter : parameters) {
             const std::string& name = parameter.get_name();
-            if (name == "publish_debug_mask") {
-                updated_publish_debug_mask = parameter.as_bool();
-                continue;
-            }
-            if (name == "image_topic" || name == "detection_topic" || name == "camera_info_topic" ||
-                name == "debug_mask_topic") {
+            if (name == "image_topic" || name == "detection_topic" || name == "camera_info_topic") {
                 return parameterFailure(name + " cannot be changed while the node is running");
             }
 
@@ -221,7 +208,6 @@ GreenLightDetectorNode::onParametersChanged(const std::vector<rclcpp::Parameter>
             green_light_detector_config_ = updated;
             green_light_detector_ = std::move(updated_green_light_detector);
         }
-        publish_debug_mask_ = updated_publish_debug_mask;
     }
 
     rcl_interfaces::msg::SetParametersResult result;
@@ -261,18 +247,13 @@ void GreenLightDetectorNode::processImage(
     Detection message;
     message.header = image->header;
     std::shared_ptr<GreenLightDetector> detector;
-    bool debug;
     {
         std::lock_guard<std::mutex> lock(green_light_detector_mutex_);
         detector = green_light_detector_;
-        debug = publish_debug_mask_;
     }
     try {
         const auto converted = cv_bridge::toCvShare(image, "bgr8");
         auto result = detector->detect(converted->image);
-        if (debug)
-            debug_mask_publisher_->publish(
-                *cv_bridge::CvImage(image->header, "mono8", result.binary_mask).toImageMsg());
         auto& candidates = result.candidates;
         std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
             return a.fit_score > b.fit_score;
