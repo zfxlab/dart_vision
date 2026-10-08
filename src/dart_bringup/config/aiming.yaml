@@ -7,6 +7,8 @@
     reference_frame: stereo_camera_center_link
     target_timeout_s: 0.2
     controller_timeout_s: 0.3
+    # 距离滑动平均窗口；填满后才输出 VALID，1 表示不平滑。修改后重启。
+    distance_average_frames: 20
     confirmation_frames: 3
     max_yaw_step_rad: 0.02
     max_distance_step_m: 0.3

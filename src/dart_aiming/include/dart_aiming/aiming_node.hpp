@@ -37,6 +37,7 @@ private:
     double target_timeout_s_{}, controller_timeout_s_{};
     std::vector<std::int64_t> supported_target_modes_;
     std::unique_ptr<Stability> stability_;
+    std::unique_ptr<DistanceMovingAverage> distance_average_;
     std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
     std::unique_ptr<tf2_ros::TransformListener> tf_listener_;
     ControllerState::ConstSharedPtr controller_;

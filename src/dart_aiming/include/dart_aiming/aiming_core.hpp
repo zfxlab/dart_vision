@@ -1,6 +1,8 @@
 #ifndef DART_AIMING_AIMING_CORE_HPP
 #define DART_AIMING_AIMING_CORE_HPP
 
+#include <cstddef>
+#include <deque>
 #include <optional>
 
 namespace dart_vision::aiming {
@@ -19,6 +21,18 @@ struct Aim {
 
 /// 在拟合完成后加入控制器给出的飞镖固定偏角。
 [[nodiscard]] std::optional<Aim> applyDartOffset(const Aim& input, double offset_rad) noexcept;
+
+/// 对新的有效距离取滑动平均；窗口填满前不返回输出。
+class DistanceMovingAverage {
+public:
+    explicit DistanceMovingAverage(int window_frames);
+    void reset() noexcept;
+    [[nodiscard]] std::optional<double> update(double distance_m);
+
+private:
+    std::size_t window_frames_;
+    std::deque<double> samples_;
+};
 
 /// 使用相邻测量的变化量确认连续帧稳定性，不对结果取平均。
 class Stability {

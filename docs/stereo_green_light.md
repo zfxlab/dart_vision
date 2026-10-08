@@ -68,6 +68,8 @@ yaw_error_rad = wrap_to_pi(-atan2(P_reference.y, P_reference.x) + dart_offset_ra
 反馈 launcher_yaw_rad 保留原始电机角度，serial 按 motor_to_joint_sign 与 motor_zero_rad 转为 JointState。
 目标保持在双目中心坐标系中，aiming 不再次减去电机反馈角。双目坐标系与发射方向之间的安装角偏差需要通过 `dart_offset_rad` 或标定结果补偿。
 
+distance 在 aiming 中按新的有效测量取滑动平均，再进入拟合；yaw 保持当前帧值。`distance_average_frames` 默认 20，设为 1 可关闭平滑。窗口填满且原始测量连续稳定确认通过后才发布 VALID；重复时间戳和定时重发不更新窗口。测量无效、关闭、超时，以及控制模式或固定偏角变化时清空窗口并重新积累。
+
 拟合入口为 `applyFittedCorrection()`，当前是恒等映射，确定拟合公式后只需替换该函数中的占位计算；`dart_offset_rad` 在拟合之后由 `applyDartOffset()` 加入。
 `camera_system.launch.py` 直接启动驱动、检测和双目节点，默认通过 description 启动 robot_state_publisher。
 若已有外部 TF 发布节点，可设置 `start_description:=false`；完整链路也支持该选项。关闭后仍需外部提供双目计算所需的 TF。
