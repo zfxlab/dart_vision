@@ -40,7 +40,6 @@ struct GreenLightDetectorConfig {
 
     double min_inner_brightness{100.0}; ///< 候选圆内绿色通道的最小平均亮度。
     double min_contrast_ratio{1.5}; ///< 圆内与外围圆环平均绿色亮度之比的下限。
-    double ambiguity_margin{0.05};  ///< 前两名候选拟合得分的最小差值。
 
     MaskCleanupConfig cleanup; ///< 分割所得二值掩膜的清理参数。
 
@@ -51,13 +50,26 @@ struct GreenLightDetectorConfig {
 struct GreenLightCandidate {
     cv::Point2f center_px; ///< 候选区域内扣除局部背景后的绿色亮度加权中心。
     double radius_px{};    ///< 最小外接圆的半径。
-    double fit_score{};    ///< 圆拟合得分，范围为 [0, 1]，越大表示拟合越好。
+    double area_px2{};     ///< 轮廓面积。
+
+    double circularity{};  ///< 轮廓圆度 4*pi*面积/周长^2，越接近 1 越圆。
+    double aspect_ratio{}; ///< 外接矩形的长边与短边之比。
+    double fill_ratio{};   ///< 轮廓面积与最小外接圆面积之比。
+
+    double mean_inner_brightness{}; ///< 最小外接圆内绿色通道的平均亮度。
+    double mean_outer_brightness{}; ///< 外接圆半径 1 至 1.5 倍圆环内的平均绿色亮度。
+    double contrast_ratio{};        ///< 圆内平均亮度与外围圆环平均亮度之比。
+
+    double mean_radial_error_px{}; ///< 轮廓点到拟合圆的平均径向误差。
+    double fit_score{}; ///< 圆拟合得分，范围为 [0, 1]，越大表示拟合越好。
 };
 
 /// 一帧图像的完整检测结果。
 struct GreenLightDetectionResult {
-    std::optional<GreenLightCandidate> target; ///< 唯一最优候选；无合格候选或候选歧义时为空。
-    bool has_contours{}; ///< 清理后的绿色掩膜中是否存在外轮廓。
+    std::optional<GreenLightCandidate> target;   ///< 最优候选；没有合格候选时为空。
+    std::vector<GreenLightCandidate> candidates; ///< 通过全部筛选条件的候选集合。
+    std::size_t contours_count{}; ///< 清理后的绿色掩膜中全部外轮廓数，在几何/亮度筛选之前计数。
+    cv::Mat binary_mask; ///< 完成形态学清理后的 CV_8UC1 二值掩膜。
 };
 
 class GreenLightDetector {
@@ -68,7 +80,7 @@ public:
      * @brief 检测一帧图像中的绿色圆形光源。
      *
      * @param image 非空的 CV_8UC3 BGR 或 CV_8UC4 BGRA 图像。
-     * @return 唯一最优目标以及是否存在绿色轮廓。
+     * @return 最优目标、全部合格候选以及清理后的二值掩膜。
      * @throws std::invalid_argument 输入图像的类型或内容不合法。
      */
     [[nodiscard]] GreenLightDetectionResult detect(const cv::Mat& image) const;
@@ -83,7 +95,7 @@ private:
 
     struct CandidateExtractionResult {
         std::vector<GreenLightCandidate> accepted_candidates;
-        bool has_contours{};
+        std::size_t contours_count{};
     };
 
     [[nodiscard]] cv::Mat normalizeInput(const cv::Mat& image) const;
@@ -92,8 +104,8 @@ private:
 
     void cleanMask(cv::Mat& mask) const;
 
-    [[nodiscard]] CandidateExtractionResult extractCandidates(const cv::Mat& binary_mask,
-                                                              const cv::Mat& green_channel) const;
+    [[nodiscard]] CandidateExtractionResult
+    extractCandidates(const cv::Mat& binary_mask, const cv::Mat& green_channel) const;
 
     [[nodiscard]] std::optional<GreenLightCandidate>
     selectBestCandidate(const std::vector<GreenLightCandidate>& candidates) const;

@@ -147,10 +147,6 @@ bool GreenLightDetectorConfig::isConfigValid() const {
         return false;
     }
 
-    if (!std::isfinite(ambiguity_margin) || ambiguity_margin < 0.0 || ambiguity_margin > 1.0) {
-        return false;
-    }
-
     if (!cleanup.isConfigValid()) {
         return false;
     }
@@ -373,10 +369,20 @@ GreenLightDetector::extractCandidates(const cv::Mat& binary_mask,
         const double mean_radial_error_px = calculateMeanRadialError(contour, center_px, radius_px);
         const double fit_score = std::clamp(1.0 - mean_radial_error_px / radius_px, 0.0, 1.0);
 
-        candidates.push_back(GreenLightCandidate{observation_center, radius_px, fit_score});
+        candidates.push_back(GreenLightCandidate{observation_center,
+                                                 radius_px,
+                                                 area_px2,
+                                                 circularity,
+                                                 aspect_ratio,
+                                                 fill_ratio,
+                                                 mean_inner_brightness,
+                                                 mean_outer_brightness,
+                                                 contrast_ratio,
+                                                 mean_radial_error_px,
+                                                 fit_score});
     }
 
-    return CandidateExtractionResult{std::move(candidates), !contours.empty()};
+    return CandidateExtractionResult{std::move(candidates), contours.size()};
 }
 
 std::optional<GreenLightCandidate>
@@ -385,19 +391,22 @@ GreenLightDetector::selectBestCandidate(const std::vector<GreenLightCandidate>& 
         return std::nullopt;
     }
 
-    const GreenLightCandidate* best_candidate = nullptr;
-    const GreenLightCandidate* runner_up = nullptr;
-    for (const auto& candidate : candidates) {
-        if (!best_candidate || candidate.fit_score > best_candidate->fit_score) {
-            runner_up = best_candidate;
-            best_candidate = &candidate;
-        } else if (!runner_up || candidate.fit_score > runner_up->fit_score) {
-            runner_up = &candidate;
-        }
-    }
-    if (runner_up && best_candidate->fit_score - runner_up->fit_score < config_.ambiguity_margin) {
-        return std::nullopt;
-    }
+    const auto best_candidate =
+        std::max_element(candidates.begin(),
+                         candidates.end(),
+                         [](const GreenLightCandidate& left, const GreenLightCandidate& right) {
+                             // 优先选择轮廓最贴合圆的候选，再以整体圆度和局部对比度消歧。
+                             if (left.fit_score != right.fit_score) {
+                                 return left.fit_score < right.fit_score;
+                             }
+
+                             if (left.circularity != right.circularity) {
+                                 return left.circularity < right.circularity;
+                             }
+
+                             return left.contrast_ratio < right.contrast_ratio;
+                         });
+
     return *best_candidate;
 }
 
@@ -411,9 +420,13 @@ GreenLightDetectionResult GreenLightDetector::detect(const cv::Mat& image) const
     CandidateExtractionResult extraction =
         extractCandidates(segmentation.binary_mask, segmentation.green_channel);
 
-    std::optional<GreenLightCandidate> target = selectBestCandidate(extraction.accepted_candidates);
+    std::optional<GreenLightCandidate> target =
+        selectBestCandidate(extraction.accepted_candidates);
 
-    return GreenLightDetectionResult{std::move(target), extraction.has_contours};
+    return GreenLightDetectionResult{std::move(target),
+                                     std::move(extraction.accepted_candidates),
+                                     extraction.contours_count,
+                                     std::move(segmentation.binary_mask)};
 }
 
 } // namespace dart_vision::camera
