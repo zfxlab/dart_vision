@@ -26,6 +26,7 @@ AimingNode::AimingNode(const rclcpp::NodeOptions& options) : Node("aiming", opti
     target_timeout_s_ = declare_parameter<double>("target_timeout_s", 0.2, read_only);
     controller_timeout_s_ = declare_parameter<double>("controller_timeout_s", 0.3, read_only);
     const int average_frames = declare_parameter<int>("distance_average_frames", 20, read_only);
+    max_ray_gap_m_ = declare_parameter<double>("max_ray_gap_m", 0.1, read_only);
     const int frames = declare_parameter<int>("confirmation_frames", 3, read_only);
     const double yaw_step = declare_parameter<double>("max_yaw_step_rad", 0.02, read_only);
     const double distance_step = declare_parameter<double>("max_distance_step_m", 0.3, read_only);
@@ -33,7 +34,8 @@ AimingNode::AimingNode(const rclcpp::NodeOptions& options) : Node("aiming", opti
         "supported_target_modes", {1, 2, 3, 4}, read_only);
     const auto positive = [](double v) { return std::isfinite(v) && v > 0.0; };
     if (reference_frame_.empty() || stereo_topic.empty() || controller_topic.empty() ||
-        command_topic.empty() || !positive(target_timeout_s_) || !positive(controller_timeout_s_))
+        command_topic.empty() || !positive(target_timeout_s_) || !positive(controller_timeout_s_) ||
+        !positive(max_ray_gap_m_))
         throw std::invalid_argument("Invalid aiming node configuration");
     stability_ = std::make_unique<Stability>(frames, yaw_step, distance_step);
     distance_average_ = std::make_unique<DistanceMovingAverage>(average_frames);
@@ -119,7 +121,8 @@ void AimingNode::onTarget(StereoTarget::ConstSharedPtr target) {
         tick();
         return;
     }
-    if (target->status != StereoTarget::VALID || !controller_ ||
+    if (target->status != StereoTarget::VALID || !std::isfinite(target->ray_gap_m) ||
+        target->ray_gap_m < 0.0 || target->ray_gap_m > max_ray_gap_m_ || !controller_ ||
         !fresh(controller_->header.stamp, controller_timeout_s_)) {
         invalidate();
         return;
