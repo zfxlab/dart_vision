@@ -27,6 +27,7 @@ std::optional<Aim> applyFittedCorrection(const Aim& input) noexcept {
 
     // 示例（确定系数后替换，当前不要启用）：
     // corrected.yaw_error_rad += yaw_residual(input.distance_m);
+    corrected.yaw_error_rad += 0.0;
     // corrected.distance_m += distance_residual(input.distance_m);
 
     if (!std::isfinite(corrected.yaw_error_rad) || !std::isfinite(corrected.distance_m) ||
