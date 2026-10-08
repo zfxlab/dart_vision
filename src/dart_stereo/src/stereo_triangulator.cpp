@@ -36,8 +36,8 @@ stereoTriangulationRejectionName(const StereoTriangulationRejection rejection) n
             return "depth_below_minimum";
         case StereoTriangulationRejection::non_finite_result:
             return "non_finite_result";
-        case StereoTriangulationRejection::ray_gap_too_large:
-            return "ray_gap_too_large";
+        case StereoTriangulationRejection::height_gap_too_large:
+            return "height_gap_too_large";
         case StereoTriangulationRejection::distance_too_large:
             return "distance_too_large";
         case StereoTriangulationRejection::behind_reference_frame:
@@ -47,10 +47,10 @@ stereoTriangulationRejectionName(const StereoTriangulationRejection rejection) n
 }
 
 bool StereoTriangulatorConfig::isConfigValid() const noexcept {
-    return std::isfinite(min_ray_angle_deg) && min_ray_angle_deg > 0.0 &&
-           min_ray_angle_deg < 90.0 && std::isfinite(min_depth_m) && min_depth_m >= 0.0 &&
-           std::isfinite(max_distance_m) && max_distance_m > min_depth_m &&
-           std::isfinite(max_ray_gap_m) && max_ray_gap_m >= 0.0;
+    return std::isfinite(min_horizontal_ray_angle_deg) && min_horizontal_ray_angle_deg > 0.0 &&
+           min_horizontal_ray_angle_deg < 90.0 && std::isfinite(min_depth_m) && min_depth_m >= 0.0 &&
+           std::isfinite(max_distance_m) && max_distance_m > 0.0 &&
+           std::isfinite(max_height_gap_m) && max_height_gap_m >= 0.0;
 }
 
 StereoTriangulator::StereoTriangulator(const StereoTriangulatorConfig& config) : config_(config) {
@@ -78,7 +78,8 @@ StereoTriangulator::triangulate(const cv::Vec3d& left_origin,
         !finiteVector(right_bearing))
         return reject(StereoTriangulationRejection::non_finite_input);
 
-    diagnostic.baseline_m = cv::norm(left_origin - right_origin);
+    diagnostic.baseline_m = std::hypot(left_origin[0] - right_origin[0],
+                                       left_origin[1] - right_origin[1]);
     if (!std::isfinite(diagnostic.baseline_m) || diagnostic.baseline_m <= 1e-12)
         return reject(StereoTriangulationRejection::degenerate_baseline);
 
@@ -90,21 +91,33 @@ StereoTriangulator::triangulate(const cv::Vec3d& left_origin,
 
     const cv::Vec3d left_direction = left_bearing / left_norm;
     const cv::Vec3d right_direction = right_bearing / right_norm;
-    const double dot = std::clamp(left_direction.dot(right_direction), -1.0, 1.0);
-    const double ray_angle_rad = std::acos(dot);
-    diagnostic.ray_angle_deg = ray_angle_rad * 180.0 / kPi;
-    if (ray_angle_rad < config_.min_ray_angle_deg * kPi / 180.0)
-        return reject(StereoTriangulationRejection::ray_angle_too_small);
+    // 保留三维单位方向，使求交参数仍表示沿原始空间射线的距离。
+    const cv::Vec2d left_xy{left_direction[0], left_direction[1]};
+    const cv::Vec2d right_xy{right_direction[0], right_direction[1]};
+    const double left_xy_norm = cv::norm(left_xy);
+    const double right_xy_norm = cv::norm(right_xy);
+    if (left_xy_norm <= 1e-12 || right_xy_norm <= 1e-12)
+        return reject(StereoTriangulationRejection::invalid_bearing);
 
-    // 最小化两条射线上点的间距，两条射线均从各自光心向前延伸。
-    const cv::Vec3d w0 = left_origin - right_origin;
-    const double d = left_direction.dot(w0);
-    const double e = right_direction.dot(w0);
-    const double denominator = 1.0 - dot * dot;
-    if (!std::isfinite(denominator) || denominator <= 1e-12)
+    const auto cross = [](const cv::Vec2d& a, const cv::Vec2d& b) {
+        return a[0] * b[1] - a[1] * b[0];
+    };
+    const double denominator = cross(left_xy, right_xy);
+    const double normalized_cross = denominator / (left_xy_norm * right_xy_norm);
+    const double dot = std::clamp(left_xy.dot(right_xy) / (left_xy_norm * right_xy_norm),
+                                  -1.0, 1.0);
+    const double ray_angle_rad = std::atan2(std::abs(normalized_cross), dot);
+    diagnostic.ray_angle_deg = ray_angle_rad * 180.0 / kPi;
+    if (ray_angle_rad < config_.min_horizontal_ray_angle_deg * kPi / 180.0)
+        return reject(StereoTriangulationRejection::ray_angle_too_small);
+    if (std::abs(normalized_cross) <= 1e-12)
         return reject(StereoTriangulationRejection::near_parallel_rays);
-    diagnostic.left_distance_m = (dot * e - d) / denominator;
-    diagnostic.right_distance_m = (e - dot * d) / denominator;
+
+    // o_L + s*d_L.xy = o_R + t*d_R.xy。
+    const cv::Vec2d offset{right_origin[0] - left_origin[0],
+                           right_origin[1] - left_origin[1]};
+    diagnostic.left_distance_m = cross(offset, right_xy) / denominator;
+    diagnostic.right_distance_m = cross(offset, left_xy) / denominator;
     if (!std::isfinite(diagnostic.left_distance_m) ||
         !std::isfinite(diagnostic.right_distance_m))
         return reject(StereoTriangulationRejection::non_finite_depth);
@@ -118,15 +131,15 @@ StereoTriangulator::triangulate(const cv::Vec3d& left_origin,
         left_origin + diagnostic.left_distance_m * left_direction;
     const cv::Vec3d right_point =
         right_origin + diagnostic.right_distance_m * right_direction;
-    diagnostic.ray_gap_m = cv::norm(left_point - right_point);
+    diagnostic.height_gap_m = std::abs(left_point[2] - right_point[2]);
     const cv::Vec3d midpoint = 0.5 * (left_point + right_point);
-    diagnostic.distance_m = cv::norm(midpoint);
+    diagnostic.distance_m = std::hypot(midpoint[0], midpoint[1]);
     diagnostic.midpoint_x_m = midpoint[0];
-    if (!finiteVector(midpoint) || !std::isfinite(diagnostic.ray_gap_m) ||
+    if (!finiteVector(midpoint) || !std::isfinite(diagnostic.height_gap_m) ||
         !std::isfinite(diagnostic.distance_m))
         return reject(StereoTriangulationRejection::non_finite_result);
-    if (diagnostic.ray_gap_m > config_.max_ray_gap_m)
-        return reject(StereoTriangulationRejection::ray_gap_too_large);
+    if (diagnostic.height_gap_m > config_.max_height_gap_m)
+        return reject(StereoTriangulationRejection::height_gap_too_large);
     if (diagnostic.distance_m > config_.max_distance_m)
         return reject(StereoTriangulationRejection::distance_too_large);
     if (diagnostic.midpoint_x_m <= 0.0)
@@ -134,7 +147,7 @@ StereoTriangulator::triangulate(const cv::Vec3d& left_origin,
 
     return StereoTriangulationResult{midpoint,
                                      diagnostic.distance_m,
-                                     diagnostic.ray_gap_m,
+                                     diagnostic.height_gap_m,
                                      diagnostic.left_distance_m,
                                      diagnostic.right_distance_m};
 }

@@ -11,7 +11,10 @@
     max_pair_delta_s: 0.03
     queue_size: 10
 
-    min_ray_angle_deg: 0.05
+    # 水平投影方向的夹角；min_depth_m 仍表示沿原始三维射线的距离。
+    min_horizontal_ray_angle_deg: 0.05
     min_depth_m: 0.5
+    # 参考坐标系 XY 平面中的水平距离。
     max_distance_m: 30.0
-    max_ray_gap_m: 0.1
+    # 两条空间视线在水平交点处的高度差。
+    max_height_gap_m: 0.1

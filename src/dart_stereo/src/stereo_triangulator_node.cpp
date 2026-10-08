@@ -50,13 +50,13 @@ StereoTriangulatorNode::StereoTriangulatorNode(const rclcpp::NodeOptions& option
     const std::int64_t configured_queue_size = declare_parameter<int>("queue_size", 10, read_only);
 
     StereoTriangulatorConfig config;
-    config.min_ray_angle_deg =
-        declare_parameter<double>("min_ray_angle_deg", config.min_ray_angle_deg, read_only);
+    config.min_horizontal_ray_angle_deg =
+        declare_parameter<double>("min_horizontal_ray_angle_deg", config.min_horizontal_ray_angle_deg, read_only);
     config.min_depth_m = declare_parameter<double>("min_depth_m", config.min_depth_m, read_only);
     config.max_distance_m =
         declare_parameter<double>("max_distance_m", config.max_distance_m, read_only);
-    config.max_ray_gap_m =
-        declare_parameter<double>("max_ray_gap_m", config.max_ray_gap_m, read_only);
+    config.max_height_gap_m =
+        declare_parameter<double>("max_height_gap_m", config.max_height_gap_m, read_only);
 
     if (left_topic.empty() || right_topic.empty() || result_topic.empty() ||
         left_frame_id_.empty() || right_frame_id_.empty() || reference_frame_.empty() ||
@@ -206,8 +206,8 @@ void StereoTriangulatorNode::processPair(const GreenLightDetection& left,
                              200,
                              "Stereo triangulation rejected: reason=%s, pair_delta=%.6f s, "
                              "baseline=%.6f m, "
-                             "ray_angle=%.6f deg, left_depth=%.6f m, right_depth=%.6f m, "
-                             "ray_gap=%.6f m, distance=%.6f m, midpoint_x=%.6f m, "
+                             "horizontal_ray_angle=%.6f deg, left_depth=%.6f m, right_depth=%.6f m, "
+                             "height_gap=%.6f m, distance=%.6f m, midpoint_x=%.6f m, "
                              "left_dir=[%.6f, %.6f, %.6f], right_dir=[%.6f, %.6f, %.6f]",
                              stereoTriangulationRejectionName(diagnostics.rejection),
                              std::abs(stampSeconds(left.header) - stampSeconds(right.header)),
@@ -215,7 +215,7 @@ void StereoTriangulatorNode::processPair(const GreenLightDetection& left,
                              diagnostics.ray_angle_deg,
                              diagnostics.left_distance_m,
                              diagnostics.right_distance_m,
-                             diagnostics.ray_gap_m,
+                             diagnostics.height_gap_m,
                              diagnostics.distance_m,
                              diagnostics.midpoint_x_m,
                              left_direction[0],
@@ -235,9 +235,9 @@ void StereoTriangulatorNode::processPair(const GreenLightDetection& left,
     message.position.x = result->position_m[0];
     message.position.y = result->position_m[1];
     message.position.z = result->position_m[2];
-    message.distance = std::hypot(message.position.x, message.position.y, message.position.z);
+    message.distance = result->distance_m;
     message.yaw = -std::atan2(message.position.y, message.position.x);
-    message.ray_gap_m = static_cast<float>(result->ray_gap_m);
+    message.height_gap_m = static_cast<float>(result->height_gap_m);
     result_publisher_->publish(message);
 }
 

@@ -9,19 +9,24 @@ namespace dart_vision::stereo {
 
 /// 双目三角测量的有效性判定阈值。
 struct StereoTriangulatorConfig {
-    double min_ray_angle_deg{0.05};
+    /// XY 投影方向的最小夹角。
+    double min_horizontal_ray_angle_deg{0.05};
+    /// 从各自光心沿原始三维单位视线前进的最小距离。
     double min_depth_m{0.1};
+    /// 参考坐标系原点到目标的最大 XY 平面距离。
     double max_distance_m{50.0};
-    double max_ray_gap_m{0.1};
+    /// 两条空间视线在水平交点处的最大高度差。
+    double max_height_gap_m{0.1};
 
     [[nodiscard]] bool isConfigValid() const noexcept;
 };
 
 struct StereoTriangulationResult {
-    /// 固定板中心坐标系中的三维位置，单位为米。
+    /// XY 为投影交点，Z 为两条视线在交点处的平均高度，单位为米。
     cv::Vec3d position_m{};
+    /// 参考原点到目标的水平距离。
     double distance_m{};
-    double ray_gap_m{};
+    double height_gap_m{};
     double left_ray_distance_m{};
     double right_ray_distance_m{};
 };
@@ -37,7 +42,7 @@ enum class StereoTriangulationRejection {
     behind_camera,
     depth_below_minimum,
     non_finite_result,
-    ray_gap_too_large,
+    height_gap_too_large,
     distance_too_large,
     behind_reference_frame,
 };
@@ -52,12 +57,12 @@ struct StereoTriangulationDiagnostics {
     double ray_angle_deg{std::numeric_limits<double>::quiet_NaN()};
     double left_distance_m{std::numeric_limits<double>::quiet_NaN()};
     double right_distance_m{std::numeric_limits<double>::quiet_NaN()};
-    double ray_gap_m{std::numeric_limits<double>::quiet_NaN()};
+    double height_gap_m{std::numeric_limits<double>::quiet_NaN()};
     double distance_m{std::numeric_limits<double>::quiet_NaN()};
     double midpoint_x_m{std::numeric_limits<double>::quiet_NaN()};
 };
 
-/** 在固定板中心坐标系中，取两条视线最近点连线的中点作为目标位置。 */
+/** 在固定板中心坐标系中，求两条视线在 XY 平面的投影交点，并保留平均高度。 */
 class StereoTriangulator {
 public:
     explicit StereoTriangulator(const StereoTriangulatorConfig& config);

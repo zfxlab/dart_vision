@@ -11,13 +11,13 @@ hik_camera_driver -> dart_camera (left/right) -> dart_stereo -> dart_aiming -> d
 
 - `dart_camera`：检测原始全幅图像中的绿灯，使用同帧 `CameraInfo` 去畸变并计算单位射线，发布 `GreenLightDetection`。多个候选拟合分数接近时报告 NO_TARGET。
 - `dart_stereo`：接收左右单位射线，进行近似时间配对和三角测量，通过 URDF 的 TF 将两个光心和视线统一到双目中心，在该坐标系内三角测量并发布 `StereoTarget`。
-- `dart_aiming`：接收三维测量和控制器消息，通过测量时刻的 TF 将目标转换到 launcher_frame，计算距离和偏转角，确认连续测量后发布 `AimCommand`。使用 C++，算法核心与 ROS 节点分开。
+- `dart_aiming`：接收三维测量和控制器消息，通过测量时刻的 TF 将目标转换到配置的 reference_frame，计算距离和偏转角，确认连续测量后发布 `AimCommand`。使用 C++，算法核心与 ROS 节点分开。
 - `dart_serial`：串口协议字节布局保持不变，负责 ROS 字段与线协议字段的映射。
 
 | 消息 | Topic | 时间与数据约定 |
 |---|---|---|
 | GreenLightDetection | /left_camera/detection、/right_camera/detection | header 原样复制图像；unit_ray 是光学坐标系中的无量纲单位方向，模长为 1，仅 DETECTED 有效，其他状态为零向量；score 是圆拟合得分，不是概率 |
-| StereoTarget | /camera/stereo_target | 左右图像时间戳中点；position 单位 m，位于 header.frame_id（默认 stereo_camera_center_link）；distance 为该原点到目标的三维距离（m），yaw 为右正水平偏转角（rad）；ray_gap_m 是射线间距 |
+| StereoTarget | /camera/stereo_target | 左右图像时间戳中点；position 单位 m，位于 header.frame_id（默认 stereo_camera_center_link）；distance 为该原点到目标的 XY 平面水平距离（m），yaw 为右正水平偏转角（rad）；height_gap_m 是水平交点处的两条视线高度差 |
 | ControllerState | /controller_state | 主机接收时间；target_mode、dart_offset_rad、launcher_yaw_rad |
 | AimCommand | /aim_command | 指令生成时间；yaw_error_rad 右正，distance_m 为 stereo_camera_center_link 的 XY 平面水平距离 |
 
@@ -40,18 +40,20 @@ hik_camera_driver -> dart_camera (left/right) -> dart_stereo -> dart_aiming -> d
 ```text
 O_L = t_L                 O_R = t_R
 l = R_L * bearing_left   r = R_R * bearing_right
+s = cross((O_R-O_L).xy, r.xy) / cross(l.xy, r.xy)
+q = cross((O_R-O_L).xy, l.xy) / cross(l.xy, r.xy)
 P_L(s) = O_L + s*l        P_R(q) = O_R + q*r
 P_center = (P_L(s) + P_R(q)) / 2
 ```
 
-通过最小化两条射线间距求 s、q，所有求交和位置检查均在固定板中心坐标系进行。
-min_depth_m 限制从各自光心沿射线前进的距离；max_distance_m 限制从固定板中心到目标的距离。
+通过二维叉积求两条视线的 XY 投影交点，得到 s、q。交点的 x/y 不受垂直观测影响，z 取 P_L(s)、P_R(q) 的平均高度；height_gap_m 为两者高度差的绝对值。所有求交和位置检查均在固定板中心坐标系进行。
+min_depth_m 限制从各自光心沿射线前进的距离；max_distance_m 限制从固定板中心到目标的 XY 平面水平距离。
 目标必须在中心前方（x > 0），射线方向本身不按中心 z 分量判断前后。
-`StereoTarget.distance = norm(position)`，`StereoTarget.yaw = -atan2(position.y, position.x)`，二者仅在 VALID 时有效，其他状态为零。yaw 不包含飞镖偏角补偿，参考系使用 x 前、y 左、z 上的约定。
-当前 URDF 给出的光心位置为左 (0.04, 0.15, 0.015) m、右 (0.04, -0.15, 0.015) m。
-算法直接使用 TF，不要求两个相机完全平行或安装偏移完全对称。
+`StereoTarget.distance = hypot(position.x, position.y)`，`StereoTarget.yaw = -atan2(position.y, position.x)`，二者仅在 VALID 时有效，其他状态为零。yaw 不包含飞镖偏角补偿，参考系使用 x 前、y 左、z 上的约定。
+当前 URDF 给出的光心位置为左 (0.025, 0.15, 0.015) m、右 (0.025, -0.15, 0.015) m。
+算法直接使用 TF，不要求两个相机完全平行或安装偏移完全对称。“水平”指 reference_frame 的 XY 平面；该坐标系倾斜时，它不是地面水平面。
 
-当前双目配置要求左右图像时间差不超过 0.03 s、视线夹角不小于 0.05°、沿两条视线的前向深度不小于 0.5 m、目标到固定板中心的距离不超过 30 m，并且两条异面视线的最近距离不超过 0.1 m。
+当前双目配置要求左右图像时间差不超过 0.03 s、水平投影视线夹角不小于 0.05°（min_horizontal_ray_angle_deg）、沿两条视线的前向深度不小于 0.5 m、目标到固定板中心的水平距离不超过 30 m，并且水平交点处的高度差不超过 0.1 m（max_height_gap_m）。纯竖直视线、水平基线退化、投影平行或交点位于任一相机后方均被拒绝。
 
 `dart_stereo` 和 `dart_aiming` 的 `reference_frame` 均为 `stereo_camera_center_link`。
 任一相机缺少 TF 时双目发布 INVALID；CLOSED 不需要 TF。
