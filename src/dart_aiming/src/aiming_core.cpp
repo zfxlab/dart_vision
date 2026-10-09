@@ -17,7 +17,7 @@ std::optional<Aim> solve(double x, double y, double z) noexcept {
     const double distance = std::hypot(x, y);
     if (!std::isfinite(distance))
         return std::nullopt;
-    return Aim{wrapAngle(-std::atan2(y, x)), distance};
+    return Aim{wrapAngle(std::atan2(y, x)), distance};
 }
 
 std::optional<Aim> applyFittedCorrection(const Aim& input) noexcept {

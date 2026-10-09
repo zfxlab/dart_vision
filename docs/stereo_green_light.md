@@ -17,9 +17,9 @@ hik_camera_driver -> dart_camera (left/right) -> dart_stereo -> dart_aiming -> d
 | 消息 | Topic | 时间与数据约定 |
 |---|---|---|
 | GreenLightDetection | /left_camera/detection、/right_camera/detection | header 原样复制图像；unit_ray 是光学坐标系中的无量纲单位方向，模长为 1，仅 DETECTED 有效，其他状态为零向量；score 是圆拟合得分，不是概率 |
-| StereoTarget | /stereo_target | 左右图像时间戳中点；position 单位 m，位于 header.frame_id（默认 stereo_camera_center_link）；distance 为该原点到目标的 XY 平面水平距离（m），yaw 为右正水平偏转角（rad）；height_gap_m 是水平交点处的两条视线高度差 |
+| StereoTarget | /stereo_target | 左右图像时间戳中点；position 单位 m，位于 header.frame_id（默认 stereo_camera_center_link）；distance 为该原点到目标的 XY 平面水平距离（m），yaw 为左正右负的水平偏转角（rad）；height_gap_m 是水平交点处的两条视线高度差 |
 | ControllerState | /controller_state | 主机接收时间；target_mode、dart_offset_rad、launcher_yaw_rad |
-| AimCommand | /aim_command | 指令生成时间；yaw_error_rad 右正，distance_m 为 stereo_camera_center_link 的 XY 平面水平距离 |
+| AimCommand | /aim_command | 指令生成时间；yaw_error_rad 左正右负，distance_m 为 launcher_frame 原点到目标的 XY 平面水平距离 |
 
 检测消息默认 ERROR=3，双目和瞄准消息默认 INVALID=2，避免默认构造被解释成关门。坐标字段只在 DETECTED / VALID 时可用。
 每张输入图像产生检测消息，header 原样复制。无图像不会伪造 CLOSED。
@@ -49,26 +49,26 @@ P_center = (P_L(s) + P_R(q)) / 2
 通过二维叉积求两条视线的 XY 投影交点，得到 s、q。交点的 x/y 不受垂直观测影响，z 取 P_L(s)、P_R(q) 的平均高度；height_gap_m 为两者高度差的绝对值。所有求交和位置检查均在固定板中心坐标系进行。
 min_depth_m 限制从各自光心沿射线前进的距离；max_distance_m 限制从固定板中心到目标的 XY 平面水平距离。
 目标必须在中心前方（x > 0），射线方向本身不按中心 z 分量判断前后。
-`StereoTarget.distance = hypot(position.x, position.y)`，`StereoTarget.yaw = -atan2(position.y, position.x)`，二者仅在 VALID 时有效，其他状态为零。yaw 不包含飞镖偏角补偿，参考系使用 x 前、y 左、z 上的约定。
+`StereoTarget.distance = hypot(position.x, position.y)`，`StereoTarget.yaw = atan2(position.y, position.x)`，二者仅在 VALID 时有效，其他状态为零。yaw 不包含飞镖偏角补偿，参考系使用 x 前、y 左、z 上的约定，因此向左为正。
 当前 URDF 给出的光心位置为左 (0.025, 0.15, 0.015) m、右 (0.025, -0.15, 0.015) m。
 算法直接使用 TF，不要求两个相机完全平行或安装偏移完全对称。“水平”指 reference_frame 的 XY 平面；该坐标系倾斜时，它不是地面水平面。
 
 当前双目配置要求左右图像时间差不超过 0.03 s、水平投影视线夹角不小于 0.05°（min_horizontal_ray_angle_deg）、沿两条视线的前向深度不小于 0.5 m、目标到固定板中心的水平距离不超过 30 m，并且水平交点处的高度差不超过 0.1 m（max_height_gap_m）。纯竖直视线、水平基线退化、投影平行或交点位于任一相机后方均被拒绝。
 
-`dart_stereo` 和 `dart_aiming` 的 `reference_frame` 均为 `stereo_camera_center_link`。
+`dart_stereo` 的 `reference_frame` 为 `stereo_camera_center_link`，便于在双目中心坐标系中完成三角测量；`dart_aiming` 的输出 `reference_frame` 为 `launcher_frame`。
 任一相机缺少 TF 时双目发布 INVALID；CLOSED 不需要 TF。
 瞄准节点按输入的 header.frame_id 查询目标测量时刻的 TF，将位置转换到配置的输出参考系：
 
 ```text
 P_reference = T_reference_input * P_input
 distance_m = hypot(P_reference.x, P_reference.y)
-yaw_error_rad = wrap_to_pi(-atan2(P_reference.y, P_reference.x) + dart_offset_rad)
+yaw_error_rad = wrap_to_pi(atan2(P_reference.y, P_reference.x) + dart_offset_rad)
 ```
 
-位置变换同时包含旋转和平移。当前输出 frame_id 为 `stereo_camera_center_link`，距离从双目中心量起，偏转角相对双目中心坐标系 x 轴且向右为正。
+位置变换同时包含旋转和平移。当前输出 frame_id 为 `launcher_frame`，距离从发射架原点量起，偏转角相对发射架 +x 轴且向左为正。
 有效目标缺少对应时刻 TF 时发布 INVALID，不使用最新 TF 代替历史变换；CLOSED 仍不依赖 TF 和控制器。
-反馈 launcher_yaw_rad 保留原始电机角度，serial 按 motor_to_joint_sign 与 motor_zero_rad 转为 JointState。
-目标保持在双目中心坐标系中，aiming 不再次减去电机反馈角。双目坐标系与发射方向之间的安装角偏差需要通过 `dart_offset_rad` 或标定结果补偿。
+反馈 launcher_yaw_rad 遵循右手坐标系，向左为正；serial 按 motor_to_joint_sign 与 motor_zero_rad 校正后发布 JointState。
+目标由双目中心坐标系变换到当前的 `launcher_frame`，aiming 不再次减去电机反馈角，否则会重复补偿发射架转角。安装与飞镖的剩余偏差由向左为正的 `dart_offset_rad` 或标定结果补偿。
 
 distance 在 aiming 中按新的有效测量取滑动平均，再进入拟合；yaw 保持当前帧值。`distance_average_frames` 默认 20，设为 1 可关闭平滑。窗口填满且原始测量连续稳定确认通过后才发布 VALID；重复时间戳和定时重发不更新窗口。测量无效、关闭、超时，以及控制模式或固定偏角变化时清空窗口并重新积累。
 
@@ -109,7 +109,7 @@ distance 在 aiming 中按新的有效测量取滑动平均，再进入拟合；
 | state | 条件 | 角度/距离 |
 |---|---|---|
 | CLOSED=0 | 新鲜双目结果为 CLOSED | 都为 0；不依赖控制器反馈和 TF |
-| VALID=1 | 双目 VALID；控制器消息新鲜且模式受支持；测量时刻 TF 可用且转换后几何合法；连续帧确认通过 | 右正相对角度（包含一次飞镖补偿）、正距离 |
+| VALID=1 | 双目 VALID；控制器消息新鲜且模式受支持；测量时刻 TF 可用且转换后几何合法；连续帧确认通过 | 左正右负的相对角度（包含一次飞镖补偿）、正距离 |
 | INVALID=2 | 其余情况：遮挡、无目标、几何失败、等待确认、超时、TF 缺失或模式不支持 | 都为 0 |
 
 默认要求 3 帧连续稳定测量，参数在 aiming.yaml。模式切换、补偿改变、目标关闭/无效或超时会重置确认。
@@ -118,6 +118,7 @@ distance 在 aiming 中按新的有效测量取滑动平均，再进入拟合；
 
 serial 对消息时间戳再次检查：新鲜 CLOSED 原样发送 0 并清零物理量；新鲜 VALID 且数值有限、距离为正才发送 1；其余、未知状态和指令中断均发送 2 并清零物理量。
 串口节点识别 13 字节、帧头为 `0x5A` 的 ReceivePacket，以及 25 字节、帧头为 `0xD5` 的 LoggerPacket。SendPacket 仍为 12 字节、帧头为 `0xA5`，CRC 与字段顺序不变，但 state 语义已变更，MCU 必须同步为 0=CLOSED / 1=VALID / 2=INVALID。
+线协议中的 `yaw_rad`、`dart_offset_rad` 和 `launcher_yaw_rad` 均使用弧度且向左为正，上下位机之间不再做 yaw 取反。
 
 **判据限制：** 双侧完全遮挡、绿灯熄灭或绿色分割失败而没有残留轮廓，也会被判为 CLOSED。这些情况仅靠“没有绿色轮廓”无法与真实关门区分；单侧遮挡或仍有轮廓的部分遮挡则会走 INVALID。没有额外增加舱门传感器或门体识别。
 

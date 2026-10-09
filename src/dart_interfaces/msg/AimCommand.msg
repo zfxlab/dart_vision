@@ -8,7 +8,7 @@ uint8 VALID=1
 uint8 INVALID=2
 uint8 state 2
 # 仅在 state=VALID 时有效，其他状态下为零。
-# 相对当前发射架方向的偏转角，单位为弧度，向右为正，已加入飞镖偏角补偿。
+# 相对当前发射架方向的偏转角，单位为弧度，向左为正，已加入飞镖偏角补偿。
 float32 yaw_error_rad
 # header.frame_id 所示参考坐标系原点到实测绿灯的 XY 平面水平距离，单位为米。
 # 非 VALID 状态下为零。

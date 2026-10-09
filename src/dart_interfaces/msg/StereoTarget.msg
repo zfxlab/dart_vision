@@ -11,8 +11,8 @@ uint8 status 2
 geometry_msgs/Point position
 # header.frame_id 原点到目标的XY 平面水平距离，单位为米；仅 VALID 时有效，其他状态为零。
 float64 distance
-# 相对 header.frame_id 的 +x 轴的水平偏转角，单位为弧度，向右为正。
-# 坐标系约定 x 前、y 左、z 上；yaw = -atan2(position.y, position.x)。
+# 相对 header.frame_id 的 +x 轴的水平偏转角，单位为弧度，向左为正。
+# 坐标系约定 x 前、y 左、z 上；yaw = atan2(position.y, position.x)。
 # 不包含飞镖偏角补偿；仅 VALID 时有效，其他状态为零。
 float64 yaw
 # 两条空间视线在水平交点处的高度差绝对值，单位为米；仅 VALID 时有效。
