@@ -23,8 +23,7 @@ void fillEnclosedHoles(cv::Mat& mask) {
     cv::bitwise_or(mask, holes, mask);
 }
 
-double calculateMeanRadialError(const std::vector<cv::Point>& contour,
-                                const cv::Point2f& center_px,
+double calculateMeanRadialError(const std::vector<cv::Point>& contour, const cv::Point2f& center_px,
                                 const double radius_px) {
     if (contour.empty() || radius_px <= 0.0) {
         return 0.0;
@@ -52,15 +51,8 @@ calculateBrightnessWeightedCenter(const std::vector<cv::Point>& contour,
     }
 
     cv::Mat contour_mask = cv::Mat::zeros(bounds.size(), CV_8UC1);
-    cv::drawContours(contour_mask,
-                     std::vector<std::vector<cv::Point>>{contour},
-                     -1,
-                     cv::Scalar(255),
-                     cv::FILLED,
-                     cv::LINE_8,
-                     cv::noArray(),
-                     0,
-                     -bounds.tl());
+    cv::drawContours(contour_mask, std::vector<std::vector<cv::Point>>{contour}, -1,
+                     cv::Scalar(255), cv::FILLED, cv::LINE_8, cv::noArray(), 0, -bounds.tl());
 
     cv::Mat weights;
     green_channel(bounds).convertTo(weights, CV_32F);
@@ -193,10 +185,8 @@ GreenLightDetector::makeGreenMask(const cv::Mat& bgr_img) const {
     cv::cvtColor(bgr_img, hsv_img, cv::COLOR_BGR2HSV);
 
     cv::Mat hsv_green_mask;
-    cv::inRange(hsv_img,
-                cv::Scalar(config_.min_hue, config_.min_saturation, config_.min_value),
-                cv::Scalar(config_.max_hue, 255, 255),
-                hsv_green_mask);
+    cv::inRange(hsv_img, cv::Scalar(config_.min_hue, config_.min_saturation, config_.min_value),
+                cv::Scalar(config_.max_hue, 255, 255), hsv_green_mask);
 
     // 绿色优势路径保留低饱和或局部过曝但 G 仍显著高于 R、B 的发光区域；
     // 亮度门限用于排除暗部色彩噪声。
@@ -230,11 +220,7 @@ void GreenLightDetector::cleanMask(cv::Mat& mask) const {
         const cv::Mat close_kernel = cv::getStructuringElement(
             cv::MORPH_ELLIPSE,
             cv::Size(config_.cleanup.close_kernel_size, config_.cleanup.close_kernel_size));
-        cv::morphologyEx(mask,
-                         mask,
-                         cv::MORPH_CLOSE,
-                         close_kernel,
-                         cv::Point(-1, -1),
+        cv::morphologyEx(mask, mask, cv::MORPH_CLOSE, close_kernel, cv::Point(-1, -1),
                          config_.cleanup.close_iterations);
     }
 
@@ -244,11 +230,7 @@ void GreenLightDetector::cleanMask(cv::Mat& mask) const {
         const cv::Mat open_kernel = cv::getStructuringElement(
             cv::MORPH_ELLIPSE,
             cv::Size(config_.cleanup.open_kernel_size, config_.cleanup.open_kernel_size));
-        cv::morphologyEx(mask,
-                         mask,
-                         cv::MORPH_OPEN,
-                         open_kernel,
-                         cv::Point(-1, -1),
+        cv::morphologyEx(mask, mask, cv::MORPH_OPEN, open_kernel, cv::Point(-1, -1),
                          config_.cleanup.open_iterations);
     }
 
@@ -333,11 +315,8 @@ GreenLightDetector::extractCandidates(const cv::Mat& binary_mask,
         cv::Mat inner_mask = cv::Mat::zeros(binary_mask.size(), CV_8UC1);
         cv::circle(inner_mask, center_integer, cvRound(radius_px), cv::Scalar(255), cv::FILLED);
         cv::Mat outer_mask = cv::Mat::zeros(binary_mask.size(), CV_8UC1);
-        cv::circle(outer_mask,
-                   center_integer,
-                   cvRound(radius_px * kOuterRadiusScale),
-                   cv::Scalar(255),
-                   cv::FILLED);
+        cv::circle(outer_mask, center_integer, cvRound(radius_px * kOuterRadiusScale),
+                   cv::Scalar(255), cv::FILLED);
         cv::circle(outer_mask, center_integer, cvRound(radius_px), cv::Scalar(0), cv::FILLED);
 
         if (cv::countNonZero(inner_mask) == 0 || cv::countNonZero(outer_mask) == 0) {
@@ -369,17 +348,10 @@ GreenLightDetector::extractCandidates(const cv::Mat& binary_mask,
         const double mean_radial_error_px = calculateMeanRadialError(contour, center_px, radius_px);
         const double fit_score = std::clamp(1.0 - mean_radial_error_px / radius_px, 0.0, 1.0);
 
-        candidates.push_back(GreenLightCandidate{observation_center,
-                                                 radius_px,
-                                                 area_px2,
-                                                 circularity,
-                                                 aspect_ratio,
-                                                 fill_ratio,
-                                                 mean_inner_brightness,
-                                                 mean_outer_brightness,
-                                                 contrast_ratio,
-                                                 mean_radial_error_px,
-                                                 fit_score});
+        candidates.push_back(GreenLightCandidate{observation_center, radius_px, area_px2,
+                                                 circularity, aspect_ratio, fill_ratio,
+                                                 mean_inner_brightness, mean_outer_brightness,
+                                                 contrast_ratio, mean_radial_error_px, fit_score});
     }
 
     return CandidateExtractionResult{std::move(candidates), contours.size()};
@@ -392,8 +364,7 @@ GreenLightDetector::selectBestCandidate(const std::vector<GreenLightCandidate>& 
     }
 
     const auto best_candidate =
-        std::max_element(candidates.begin(),
-                         candidates.end(),
+        std::max_element(candidates.begin(), candidates.end(),
                          [](const GreenLightCandidate& left, const GreenLightCandidate& right) {
                              // 优先选择轮廓最贴合圆的候选，再以整体圆度和局部对比度消歧。
                              if (left.fit_score != right.fit_score) {
@@ -420,11 +391,9 @@ GreenLightDetectionResult GreenLightDetector::detect(const cv::Mat& image) const
     CandidateExtractionResult extraction =
         extractCandidates(segmentation.binary_mask, segmentation.green_channel);
 
-    std::optional<GreenLightCandidate> target =
-        selectBestCandidate(extraction.accepted_candidates);
+    std::optional<GreenLightCandidate> target = selectBestCandidate(extraction.accepted_candidates);
 
-    return GreenLightDetectionResult{std::move(target),
-                                     std::move(extraction.accepted_candidates),
+    return GreenLightDetectionResult{target, std::move(extraction.accepted_candidates),
                                      extraction.contours_count,
                                      std::move(segmentation.binary_mask)};
 }

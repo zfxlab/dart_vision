@@ -13,30 +13,30 @@ namespace {
 
 speed_t baudRateToTermios(std::uint32_t baud_rate) {
     switch (baud_rate) {
-        case 9600:
-            return B9600;
-        case 19200:
-            return B19200;
-        case 38400:
-            return B38400;
-        case 57600:
-            return B57600;
-        case 115200:
-            return B115200;
+    case 9600:
+        return B9600;
+    case 19200:
+        return B19200;
+    case 38400:
+        return B38400;
+    case 57600:
+        return B57600;
+    case 115200:
+        return B115200;
 #ifdef B230400
-        case 230400:
-            return B230400;
+    case 230400:
+        return B230400;
 #endif
 #ifdef B460800
-        case 460800:
-            return B460800;
+    case 460800:
+        return B460800;
 #endif
 #ifdef B921600
-        case 921600:
-            return B921600;
+    case 921600:
+        return B921600;
 #endif
-        default:
-            throw std::invalid_argument("Unsupported serial baud rate");
+    default:
+        throw std::invalid_argument("Unsupported serial baud rate");
     }
 }
 

@@ -11,10 +11,9 @@ namespace {
 /**
  * @brief 将可按位复制的协议结构体转换为独立字节数组。
  */
-template <typename Packet>
-std::vector<std::uint8_t> packetToBytes(const Packet& packet) {
-    static_assert(
-        std::is_trivially_copyable_v<Packet>, "Protocol packet must be trivially copyable");
+template <typename Packet> std::vector<std::uint8_t> packetToBytes(const Packet& packet) {
+    static_assert(std::is_trivially_copyable_v<Packet>,
+                  "Protocol packet must be trivially copyable");
 
     std::vector<std::uint8_t> bytes(sizeof(Packet));
     std::memcpy(bytes.data(), &packet, sizeof(Packet));
@@ -25,27 +24,27 @@ std::vector<std::uint8_t> packetToBytes(const Packet& packet) {
 
 PacketType packetTypeFromHeader(std::uint8_t header) noexcept {
     switch (header) {
-        case kReceivePacketHeader:
-            return PacketType::kReceive;
-        case kSendPacketHeader:
-            return PacketType::kSend;
-        case kLoggerPacketHeader:
-            return PacketType::kLogger;
-        default:
-            return PacketType::kUnknown;
+    case kReceivePacketHeader:
+        return PacketType::kReceive;
+    case kSendPacketHeader:
+        return PacketType::kSend;
+    case kLoggerPacketHeader:
+        return PacketType::kLogger;
+    default:
+        return PacketType::kUnknown;
     }
 }
 
 std::size_t packetSizeFromHeader(std::uint8_t header) noexcept {
     switch (packetTypeFromHeader(header)) {
-        case PacketType::kReceive:
-            return sizeof(ReceivePacket);
-        case PacketType::kSend:
-            return sizeof(SendPacket);
-        case PacketType::kLogger:
-            return sizeof(LoggerPacket);
-        case PacketType::kUnknown:
-            return 0;
+    case PacketType::kReceive:
+        return sizeof(ReceivePacket);
+    case PacketType::kSend:
+        return sizeof(SendPacket);
+    case PacketType::kLogger:
+        return sizeof(LoggerPacket);
+    case PacketType::kUnknown:
+        return 0;
     }
 
     return 0;
@@ -71,9 +70,8 @@ std::optional<ReceivePacket> decodeReceivePacket(const std::vector<std::uint8_t>
         return std::nullopt;
     }
 
-    static_assert(
-        std::is_trivially_copyable_v<ReceivePacket>,
-        "ReceivePacket must be trivially copyable");
+    static_assert(std::is_trivially_copyable_v<ReceivePacket>,
+                  "ReceivePacket must be trivially copyable");
 
     ReceivePacket packet{};
     std::memcpy(&packet, frame.data(), sizeof(packet));
@@ -91,9 +89,8 @@ std::optional<LoggerPacket> decodeLoggerPacket(const std::vector<std::uint8_t>& 
         return std::nullopt;
     }
 
-    static_assert(
-        std::is_trivially_copyable_v<LoggerPacket>,
-        "LoggerPacket must be trivially copyable");
+    static_assert(std::is_trivially_copyable_v<LoggerPacket>,
+                  "LoggerPacket must be trivially copyable");
 
     LoggerPacket packet{};
     std::memcpy(&packet, frame.data(), sizeof(packet));

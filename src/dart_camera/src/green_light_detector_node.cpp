@@ -53,8 +53,7 @@ GreenLightDetectorNode::GreenLightDetectorNode(const rclcpp::NodeOptions& option
     diagnostics_timer_ = create_wall_timer(
         std::chrono::seconds(1), std::bind(&GreenLightDetectorNode::publishDiagnostics, this));
     camera_info_subscription_ = create_subscription<sensor_msgs::msg::CameraInfo>(
-        get_parameter("camera_info_topic").as_string(),
-        rclcpp::SensorDataQoS(),
+        get_parameter("camera_info_topic").as_string(), rclcpp::SensorDataQoS(),
         [this](sensor_msgs::msg::CameraInfo::ConstSharedPtr info) {
             latest_camera_info_ = std::move(info);
             processPendingImages();
@@ -62,16 +61,14 @@ GreenLightDetectorNode::GreenLightDetectorNode(const rclcpp::NodeOptions& option
     camera_info_timer_ =
         create_wall_timer(std::chrono::milliseconds(20), [this] { processPendingImages(); });
     image_subscription_ = create_subscription<sensor_msgs::msg::Image>(
-        image_topic_,
-        rclcpp::SensorDataQoS(),
+        image_topic_, rclcpp::SensorDataQoS(),
         std::bind(&GreenLightDetectorNode::imageCallback, this, std::placeholders::_1));
     parameter_callback_ = add_on_set_parameters_callback(
         std::bind(&GreenLightDetectorNode::onParametersChanged, this, std::placeholders::_1));
 
     RCLCPP_INFO(get_logger(),
                 "Green-light detector listening on '%s', publishing observations on '%s'",
-                image_topic_.c_str(),
-                detection_topic_.c_str());
+                image_topic_.c_str(), detection_topic_.c_str());
 }
 
 void GreenLightDetectorNode::declareParameters() {
@@ -255,9 +252,8 @@ void GreenLightDetectorNode::processImage(
         const auto converted = cv_bridge::toCvShare(image, "bgr8");
         auto result = detector->detect(converted->image);
         auto& candidates = result.candidates;
-        std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
-            return a.fit_score > b.fit_score;
-        });
+        std::sort(candidates.begin(), candidates.end(),
+                  [](const auto& a, const auto& b) { return a.fit_score > b.fit_score; });
         message.status = result.contours_count == 0 ? Detection::CLOSED : Detection::NO_TARGET;
         if (candidates.size() > 1 && candidates[0].fit_score - candidates[1].fit_score <
                                          get_parameter("ambiguity_margin").as_double()) {
@@ -306,21 +302,21 @@ void GreenLightDetectorNode::processImage(
         std::max(statistics.max_processing_time_interval, processing_time);
     statistics.last_processed_time = processing_end;
     switch (message.status) {
-        case Detection::DETECTED:
-            ++statistics.detected_total;
-            ++statistics.detected_interval;
-            break;
-        case Detection::CLOSED:
-            ++statistics.closed_total;
-            break;
-        case Detection::NO_TARGET:
-            ++statistics.no_target_total;
-            break;
-        case Detection::ERROR:
-        default:
-            ++statistics.errors_total;
-            ++statistics.errors_interval;
-            break;
+    case Detection::DETECTED:
+        ++statistics.detected_total;
+        ++statistics.detected_interval;
+        break;
+    case Detection::CLOSED:
+        ++statistics.closed_total;
+        break;
+    case Detection::NO_TARGET:
+        ++statistics.no_target_total;
+        break;
+    case Detection::ERROR:
+    default:
+        ++statistics.errors_total;
+        ++statistics.errors_interval;
+        break;
     }
 }
 

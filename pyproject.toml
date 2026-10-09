@@ -1,63 +1,7 @@
-# Python 格式化与静态检查配置
-
 [tool.ruff]
-# 与 .clang-format 的 ColumnLimit 保持一致
 line-length = 100
-
-# Ubuntu 24.04 / ROS 2 Jazzy 默认使用 Python 3.12
 target-version = "py312"
-
-# 不检查构建产物和第三方生成目录
-extend-exclude = [
-  "build",
-  "install",
-  "log",
-  ".git",
-  ".venv",
-  "venv",
-  "__pycache__",
-]
+extend-exclude = ["third_party"]
 
 [tool.ruff.lint]
-select = [
-  "E4",   # import 和空白格式问题
-  "E7",   # 语句格式问题
-  "E9",   # Python 语法错误
-  "F",    # Pyflakes：未定义名称、未使用变量等
-  "I",    # import 排序
-  "UP",   # 建议使用现代 Python 写法
-  "B",    # flake8-bugbear：潜在 bug 和不推荐写法
-  "SIM",  # 简化不必要的复杂代码
-  "C4",   # 简化列表、集合和字典推导式
-  "PIE",  # 不必要或容易出错的代码
-  "RUF",  # Ruff 自身提供的规则
-]
-
-ignore = [
-  # 不单独报告超长行，格式由 ruff format 统一处理
-  "E501",
-]
-
-[tool.ruff.lint.isort]
-# 替换为新项目自己的 Python 包名
-known-first-party = [
-]
-
-# import 分组时合并同一包的别名
-combine-as-imports = true
-
-[tool.ruff.format]
-# 使用双引号
-quote-style = "double"
-
-# 使用空格缩进
-indent-style = "space"
-
-# 使用 Linux LF 行尾
-line-ending = "lf"
-
-# 格式化文档字符串中的 Python 代码
-docstring-code-format = true
-
-# 文档字符串中代码的目标行宽
-docstring-code-line-length = 100
+select = ["E4", "E7", "E9", "F", "I", "B", "UP"]

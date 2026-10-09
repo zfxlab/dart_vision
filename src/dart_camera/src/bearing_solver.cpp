@@ -53,8 +53,8 @@ BearingSolver::calculateUnitBearing(const cv::Point2f& center_px) const noexcept
     try {
         const std::vector<cv::Point2f> distorted_points{center_px};
         std::vector<cv::Point2f> normalized_points;
-        cv::undistortPoints(
-            distorted_points, normalized_points, camera_matrix_, distortion_coefficients_);
+        cv::undistortPoints(distorted_points, normalized_points, camera_matrix_,
+                            distortion_coefficients_);
 
         if (normalized_points.size() != 1U) {
             return std::nullopt;

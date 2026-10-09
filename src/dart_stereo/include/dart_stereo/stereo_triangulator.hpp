@@ -2,8 +2,8 @@
 #define DART_STEREO_STEREO_TRIANGULATOR_HPP
 
 #include <limits>
-#include <optional>
 #include <opencv2/core.hpp>
+#include <optional>
 
 namespace dart_vision::stereo {
 
@@ -64,18 +64,16 @@ struct StereoTriangulationDiagnostics {
 
 /** 在固定板中心坐标系中，求两条视线在 XY 平面的投影交点，并保留平均高度。 */
 class StereoTriangulator {
-public:
+  public:
     explicit StereoTriangulator(const StereoTriangulatorConfig& config);
 
     /// 两个光心位置及视线方向必须位于同一固定板中心坐标系（x 前、y 左、z 上）。
     [[nodiscard]] std::optional<StereoTriangulationResult>
-    triangulate(const cv::Vec3d& left_origin,
-                const cv::Vec3d& left_bearing,
-                const cv::Vec3d& right_origin,
-                const cv::Vec3d& right_bearing,
+    triangulate(const cv::Vec3d& left_origin, const cv::Vec3d& left_bearing,
+                const cv::Vec3d& right_origin, const cv::Vec3d& right_bearing,
                 StereoTriangulationDiagnostics* diagnostics = nullptr) const noexcept;
 
-private:
+  private:
     StereoTriangulatorConfig config_;
 };
 

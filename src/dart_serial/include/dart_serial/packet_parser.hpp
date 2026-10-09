@@ -47,7 +47,7 @@ struct ParseResult {
  * @note 该类本身不提供线程安全保证，应由同一个接收线程调用，或由调用方进行同步。
  */
 class PacketParser {
-public:
+  public:
     /**
      * @brief 将新读取的串口字节追加到内部缓冲区。
      *
@@ -80,7 +80,7 @@ public:
      */
     [[nodiscard]] std::size_t bufferedSize() const noexcept;
 
-private:
+  private:
     std::vector<std::uint8_t> buffer_;
 };
 

@@ -30,8 +30,8 @@ AimingNode::AimingNode(const rclcpp::NodeOptions& options) : Node("aiming", opti
     const int frames = declare_parameter<int>("confirmation_frames", 3, read_only);
     const double yaw_step = declare_parameter<double>("max_yaw_step_rad", 0.02, read_only);
     const double distance_step = declare_parameter<double>("max_distance_step_m", 0.3, read_only);
-    supported_target_modes_ = declare_parameter<std::vector<std::int64_t>>(
-        "supported_target_modes", {1, 2, 3, 4}, read_only);
+    supported_target_modes_ = declare_parameter<std::vector<std::int64_t>>("supported_target_modes",
+                                                                           {1, 2, 3, 4}, read_only);
     const auto positive = [](double v) { return std::isfinite(v) && v > 0.0; };
     if (reference_frame_.empty() || stereo_topic.empty() || controller_topic.empty() ||
         command_topic.empty() || !positive(target_timeout_s_) || !positive(controller_timeout_s_) ||
@@ -43,16 +43,12 @@ AimingNode::AimingNode(const rclcpp::NodeOptions& options) : Node("aiming", opti
     tf_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_);
     publisher_ = create_publisher<AimCommand>(command_topic, 10);
     controller_subscription_ = create_subscription<ControllerState>(
-        controller_topic,
-        rclcpp::SensorDataQoS(),
+        controller_topic, rclcpp::SensorDataQoS(),
         std::bind(&AimingNode::onController, this, std::placeholders::_1));
     target_subscription_ = create_subscription<StereoTarget>(
-        stereo_topic,
-        rclcpp::SensorDataQoS(),
+        stereo_topic, rclcpp::SensorDataQoS(),
         std::bind(&AimingNode::onTarget, this, std::placeholders::_1));
-    timer_ = rclcpp::create_timer(this,
-                                  get_clock(),
-                                  rclcpp::Duration::from_seconds(0.02),
+    timer_ = rclcpp::create_timer(this, get_clock(), rclcpp::Duration::from_seconds(0.02),
                                   std::bind(&AimingNode::tick, this));
     RCLCPP_INFO(get_logger(), "Aiming output frame: '%s'", reference_frame_.c_str());
 }
@@ -74,8 +70,7 @@ void AimingNode::invalidate(bool preserve_closed) {
 void AimingNode::onController(ControllerState::ConstSharedPtr message) {
     if (!fresh(message->header.stamp, controller_timeout_s_) ||
         !std::isfinite(message->launcher_yaw_rad) || !std::isfinite(message->dart_offset_rad) ||
-        std::find(supported_target_modes_.begin(),
-                  supported_target_modes_.end(),
+        std::find(supported_target_modes_.begin(), supported_target_modes_.end(),
                   message->target_mode) == supported_target_modes_.end()) {
         controller_.reset();
         invalidate(true);
@@ -132,13 +127,13 @@ void AimingNode::onTarget(StereoTarget::ConstSharedPtr target) {
     source.point = target->position;
     try {
         // 使用目标测量时刻的变换，不能以最新 TF 替代历史姿态。
-        const auto transform = tf_buffer_->lookupTransform(
-            reference_frame_, source.header.frame_id, rclcpp::Time(source.header.stamp));
+        const auto transform = tf_buffer_->lookupTransform(reference_frame_, source.header.frame_id,
+                                                           rclcpp::Time(source.header.stamp));
         tf2::doTransform(source, transformed, transform);
     } catch (const tf2::TransformException& error) {
         invalidate();
-        RCLCPP_WARN_THROTTLE(
-            get_logger(), *get_clock(), 2000, "Aiming transform unavailable: %s", error.what());
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "Aiming transform unavailable: %s",
+                             error.what());
         return;
     }
     const auto& p = transformed.point;

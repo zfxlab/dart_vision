@@ -73,7 +73,7 @@ struct GreenLightDetectionResult {
 };
 
 class GreenLightDetector {
-public:
+  public:
     explicit GreenLightDetector(const GreenLightDetectorConfig& config);
 
     /**
@@ -85,7 +85,7 @@ public:
      */
     [[nodiscard]] GreenLightDetectionResult detect(const cv::Mat& image) const;
 
-private:
+  private:
     GreenLightDetectorConfig config_;
 
     struct SegmentationResult {
@@ -104,8 +104,8 @@ private:
 
     void cleanMask(cv::Mat& mask) const;
 
-    [[nodiscard]] CandidateExtractionResult
-    extractCandidates(const cv::Mat& binary_mask, const cv::Mat& green_channel) const;
+    [[nodiscard]] CandidateExtractionResult extractCandidates(const cv::Mat& binary_mask,
+                                                              const cv::Mat& green_channel) const;
 
     [[nodiscard]] std::optional<GreenLightCandidate>
     selectBestCandidate(const std::vector<GreenLightCandidate>& candidates) const;

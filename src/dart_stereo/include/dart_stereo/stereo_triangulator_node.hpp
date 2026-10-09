@@ -18,18 +18,17 @@ namespace dart_vision::stereo {
 
 /** 配对左右单位射线，通过 TF 和三角测量计算绿灯位置。 */
 class StereoTriangulatorNode : public rclcpp::Node {
-public:
+  public:
     explicit StereoTriangulatorNode(const rclcpp::NodeOptions& options);
 
-private:
+  private:
     using GreenLightDetection = dart_interfaces::msg::GreenLightDetection;
     using StereoTarget = dart_interfaces::msg::StereoTarget;
 
     void observationCallback(const GreenLightDetection::ConstSharedPtr& message, bool is_left);
     void matchQueuedObservations();
     void processPair(const GreenLightDetection& left, const GreenLightDetection& right);
-    void publishFailure(const GreenLightDetection& left,
-                        const GreenLightDetection& right,
+    void publishFailure(const GreenLightDetection& left, const GreenLightDetection& right,
                         std::uint8_t status);
 
     std::string left_frame_id_, right_frame_id_, reference_frame_;

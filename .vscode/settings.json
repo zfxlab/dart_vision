@@ -1,104 +1,26 @@
 {
-  // ROS 2
-  "ROS2.distro": "jazzy",
-  // Python/ROS 2模块搜索路径
+  "python.defaultInterpreterPath": "/usr/bin/python3",
   "python.analysis.extraPaths": [
     "/opt/ros/jazzy/lib/python3.12/site-packages"
   ],
-  "python.analysis.typeCheckingMode": "basic",
-  "python.terminal.activateEnvironment": true,
-  // 通用文件设置，与 .editorconfig 保持一致
-  "files.eol": "\n",
-  "files.insertFinalNewline": true,
-  "files.trimTrailingWhitespace": true,
-  // 不根据已有文件猜测缩进
-  "editor.detectIndentation": false,
-  "editor.insertSpaces": true,
-  "editor.renderWhitespace": "all",
-  // C语言
   "[c]": {
     "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
-    "editor.formatOnSave": true,
-    "editor.insertSpaces": true,
-    "editor.tabSize": 4
+    "editor.formatOnSave": true
   },
-  // C++
   "[cpp]": {
     "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
-    "editor.formatOnSave": true,
-    "editor.insertSpaces": true,
-    "editor.tabSize": 4
+    "editor.formatOnSave": true
   },
-  // 禁用Microsoft C/C++扩展的语义分析和格式化，避免与clangd冲突
-  "C_Cpp.intelliSenseEngine": "disabled",
-  "C_Cpp.formatting": "disabled",
-  // clangd
   "clangd.path": "/usr/bin/clangd",
   "clangd.arguments": [
-    "--clang-tidy",
-    "--completion-style=detailed",
-    "--header-insertion=iwyu"
+    "--clang-tidy"
   ],
-  // Python
   "[python]": {
     "editor.defaultFormatter": "charliermarsh.ruff",
     "editor.formatOnSave": true,
-    "editor.insertSpaces": true,
-    "editor.tabSize": 4,
     "editor.codeActionsOnSave": {
-      "source.fixAll.ruff": "explicit",
       "source.organizeImports.ruff": "explicit"
     }
   },
-  // JSON
-  "[json]": {
-    "editor.defaultFormatter": "vscode.json-language-features",
-    "editor.formatOnSave": true,
-    "editor.insertSpaces": true,
-    "editor.tabSize": 2
-  },
-  // 带注释的JSON，例如settings.json
-  "[jsonc]": {
-    "editor.defaultFormatter": "vscode.json-language-features",
-    "editor.formatOnSave": true,
-    "editor.insertSpaces": true,
-    "editor.tabSize": 2
-  },
-  // YAML
-  "[yaml]": {
-    "editor.defaultFormatter": "redhat.vscode-yaml",
-    "editor.formatOnSave": true,
-    "editor.insertSpaces": true,
-    "editor.tabSize": 2
-  },
-  // XML、URDF、Xacro
-  "[xml]": {
-    "editor.defaultFormatter": "redhat.vscode-xml",
-    "editor.formatOnSave": true,
-    "editor.insertSpaces": true,
-    "editor.tabSize": 2
-  },
-  // Markdown
-  "[markdown]": {
-    "editor.insertSpaces": true,
-    "editor.tabSize": 2,
-    "files.trimTrailingWhitespace": false
-  },
-  // CMake
-  "[cmake]": {
-    "editor.defaultFoldingRangeProvider": "cheshirekow.cmake-format",
-    "editor.formatOnSave": true,
-    "editor.insertSpaces": true,
-    "editor.tabSize": 2
-  },
-  // Shell
-  "[shellscript]": {
-    "editor.insertSpaces": true,
-    "editor.tabSize": 2
-  },
-  // Makefile的命令必须使用真实Tab
-  "[makefile]": {
-    "editor.insertSpaces": false,
-    "editor.tabSize": 4
-  }
+  "ROS2.distro": "jazzy"
 }

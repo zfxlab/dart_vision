@@ -24,24 +24,24 @@ struct Aim {
 
 /// 对新的有效距离取滑动平均；窗口填满前不返回输出。
 class DistanceMovingAverage {
-public:
+  public:
     explicit DistanceMovingAverage(int window_frames);
     void reset() noexcept;
     [[nodiscard]] std::optional<double> update(double distance_m);
 
-private:
+  private:
     std::size_t window_frames_;
     std::deque<double> samples_;
 };
 
 /// 使用相邻测量的变化量确认连续帧稳定性，不对结果取平均。
 class Stability {
-public:
+  public:
     Stability(int frames, double yaw_step, double distance_step);
     void reset() noexcept;
     [[nodiscard]] bool update(const Aim& aim) noexcept;
 
-private:
+  private:
     int frames_;
     double yaw_step_, distance_step_;
     std::optional<Aim> previous_;

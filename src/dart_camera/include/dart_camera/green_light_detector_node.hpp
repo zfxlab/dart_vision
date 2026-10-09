@@ -12,10 +12,10 @@
 #include "dart_interfaces/msg/green_light_detection.hpp"
 namespace dart_vision::camera {
 class GreenLightDetectorNode : public rclcpp::Node {
-public:
+  public:
     explicit GreenLightDetectorNode(const rclcpp::NodeOptions& options);
 
-private:
+  private:
     void declareParameters();
     GreenLightDetectorConfig readGreenLightDetectorConfig() const;
     rcl_interfaces::msg::SetParametersResult

@@ -23,7 +23,7 @@ struct BearingSolverConfig {
  * 本类只恢复方向，不根据目标图像尺寸估计距离。
  */
 class BearingSolver {
-public:
+  public:
     explicit BearingSolver(const BearingSolverConfig& config);
 
     /**
@@ -33,7 +33,7 @@ public:
     [[nodiscard]] std::optional<cv::Vec3d>
     calculateUnitBearing(const cv::Point2f& center_px) const noexcept;
 
-private:
+  private:
     cv::Mat camera_matrix_;
     cv::Mat distortion_coefficients_;
 };

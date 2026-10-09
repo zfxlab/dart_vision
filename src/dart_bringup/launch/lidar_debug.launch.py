@@ -9,21 +9,13 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
-    config_directory = PathJoinSubstitution(
-        [FindPackageShare("dart_bringup"), "config", "lidar"]
-    )
-    default_driver_params_file = PathJoinSubstitution(
-        [config_directory, "livox_driver.yaml"]
-    )
-    default_lidar_config_file = PathJoinSubstitution(
-        [config_directory, "livox_lidar_config.json"]
-    )
+    config_directory = PathJoinSubstitution([FindPackageShare("dart_bringup"), "config", "lidar"])
+    default_driver_params_file = PathJoinSubstitution([config_directory, "livox_driver.yaml"])
+    default_lidar_config_file = PathJoinSubstitution([config_directory, "livox_lidar_config.json"])
 
     driver_params_file = LaunchConfiguration("livox_driver_params_file")
     lidar_config_file = LaunchConfiguration("livox_lidar_config_file")
-    use_sim_time = ParameterValue(
-        LaunchConfiguration("use_sim_time"), value_type=bool
-    )
+    use_sim_time = ParameterValue(LaunchConfiguration("use_sim_time"), value_type=bool)
 
     livox_driver = Node(
         package="livox_ros2_driver",
@@ -33,9 +25,7 @@ def generate_launch_description():
         parameters=[
             driver_params_file,
             {
-                "user_config_path": ParameterValue(
-                    lidar_config_file, value_type=str
-                ),
+                "user_config_path": ParameterValue(lidar_config_file, value_type=str),
                 "cmdline_input_bd_code": "",
                 "use_sim_time": use_sim_time,
             },

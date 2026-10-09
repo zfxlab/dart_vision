@@ -19,10 +19,10 @@ namespace dart_vision::aiming {
 
 /// 接收双目位置与控制器状态，按测量时刻转换到输出参考系后生成瞄准指令。
 class AimingNode : public rclcpp::Node {
-public:
+  public:
     explicit AimingNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions{});
 
-private:
+  private:
     using AimCommand = dart_interfaces::msg::AimCommand;
     using ControllerState = dart_interfaces::msg::ControllerState;
     using StereoTarget = dart_interfaces::msg::StereoTarget;

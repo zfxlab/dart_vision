@@ -28,11 +28,11 @@ namespace dart_vision::serial {
  * 均保持 ROS2 无关，参数、日志、话题以及断线重连由本类负责。
  */
 class SerialNode : public rclcpp::Node {
-public:
+  public:
     explicit SerialNode(const rclcpp::NodeOptions& options);
     ~SerialNode() override;
 
-private:
+  private:
     void declareParameters();
     [[nodiscard]] SerialConfig readSerialConfig() const;
 

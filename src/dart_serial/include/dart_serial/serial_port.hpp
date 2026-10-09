@@ -14,7 +14,7 @@ namespace dart_vision::serial {
  */
 struct SerialConfig {
     std::string device{"/dev/ttyACM0"}; ///< Linux 串口设备路径。
-    std::uint32_t baud_rate{115200};     ///< 通信波特率。
+    std::uint32_t baud_rate{115200};    ///< 通信波特率。
 
     /**
      * @brief 单次 read() 等待数据的最长时间，单位为毫秒。
@@ -36,7 +36,7 @@ struct SerialConfig {
  * read()/write() 不应并发调用，应由上层统一管理生命周期。
  */
 class SerialPort {
-public:
+  public:
     /**
      * @brief 保存并验证串口配置，但不立即打开设备。
      *
@@ -99,7 +99,7 @@ public:
      */
     void write(const std::uint8_t* data, std::size_t size);
 
-private:
+  private:
     SerialConfig config_;
     int file_descriptor_{-1};
 };

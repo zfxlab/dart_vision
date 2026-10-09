@@ -50,8 +50,8 @@ StereoTriangulatorNode::StereoTriangulatorNode(const rclcpp::NodeOptions& option
     const std::int64_t configured_queue_size = declare_parameter<int>("queue_size", 10, read_only);
 
     StereoTriangulatorConfig config;
-    config.min_horizontal_ray_angle_deg =
-        declare_parameter<double>("min_horizontal_ray_angle_deg", config.min_horizontal_ray_angle_deg, read_only);
+    config.min_horizontal_ray_angle_deg = declare_parameter<double>(
+        "min_horizontal_ray_angle_deg", config.min_horizontal_ray_angle_deg, read_only);
     config.min_depth_m = declare_parameter<double>("min_depth_m", config.min_depth_m, read_only);
     config.max_distance_m =
         declare_parameter<double>("max_distance_m", config.max_distance_m, read_only);
@@ -70,18 +70,15 @@ StereoTriangulatorNode::StereoTriangulatorNode(const rclcpp::NodeOptions& option
     result_publisher_ = create_publisher<StereoTarget>(result_topic, rclcpp::SensorDataQoS());
     left_subscription_ = create_subscription<GreenLightDetection>(
         left_topic, rclcpp::SensorDataQoS(), [this](GreenLightDetection::ConstSharedPtr message) {
-            observationCallback(std::move(message), true);
+            observationCallback(message, true);
         });
     right_subscription_ = create_subscription<GreenLightDetection>(
         right_topic, rclcpp::SensorDataQoS(), [this](GreenLightDetection::ConstSharedPtr message) {
-            observationCallback(std::move(message), false);
+            observationCallback(message, false);
         });
 
-    RCLCPP_INFO(get_logger(),
-                "Stereo triangulator: left='%s', right='%s', output='%s'",
-                left_topic.c_str(),
-                right_topic.c_str(),
-                result_topic.c_str());
+    RCLCPP_INFO(get_logger(), "Stereo triangulator: left='%s', right='%s', output='%s'",
+                left_topic.c_str(), right_topic.c_str(), result_topic.c_str());
 }
 
 void StereoTriangulatorNode::observationCallback(const GreenLightDetection::ConstSharedPtr& message,
@@ -130,11 +127,8 @@ void StereoTriangulatorNode::matchQueuedObservations() {
             break;
         }
         RCLCPP_WARN_THROTTLE(
-            get_logger(),
-            *get_clock(),
-            2000,
-            "Dropping unmatched stereo observation; closest timestamp delta %.4f s",
-            best_delta);
+            get_logger(), *get_clock(), 2000,
+            "Dropping unmatched stereo observation; closest timestamp delta %.4f s", best_delta);
     }
 }
 
@@ -169,10 +163,8 @@ void StereoTriangulatorNode::processPair(const GreenLightDetection& left,
     cv::Vec3d left_origin, right_origin, left_direction, right_direction;
     try {
         // 光心使用 TF 的平移，视线是自由向量，仅使用 TF 的旋转。
-        const auto transform_ray = [&](const std::string& frame,
-                                       const cv::Vec3d& bearing,
-                                       cv::Vec3d& origin,
-                                       cv::Vec3d& direction) {
+        const auto transform_ray = [&](const std::string& frame, const cv::Vec3d& bearing,
+                                       cv::Vec3d& origin, cv::Vec3d& direction) {
             const auto transform =
                 tf_buffer_->lookupTransform(reference_frame_, frame, measurement_time);
             const auto& t = transform.transform.translation;
@@ -189,41 +181,28 @@ void StereoTriangulatorNode::processPair(const GreenLightDetection& left,
         transform_ray(right_frame_id_, *rb, right_origin, right_direction);
     } catch (const tf2::TransformException& error) {
         publishFailure(left, right, StereoTarget::INVALID);
-        RCLCPP_WARN_THROTTLE(get_logger(),
-                             *get_clock(),
-                             2000,
-                             "Stereo reference transform unavailable: %s",
-                             error.what());
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                             "Stereo reference transform unavailable: %s", error.what());
         return;
     }
     StereoTriangulationDiagnostics diagnostics;
-    const auto result = triangulator_->triangulate(
-        left_origin, left_direction, right_origin, right_direction, &diagnostics);
+    const auto result = triangulator_->triangulate(left_origin, left_direction, right_origin,
+                                                   right_direction, &diagnostics);
     if (!result) {
         publishFailure(left, right, StereoTarget::INVALID);
-        RCLCPP_WARN_THROTTLE(get_logger(),
-                             *get_clock(),
-                             200,
-                             "Stereo triangulation rejected: reason=%s, pair_delta=%.6f s, "
-                             "baseline=%.6f m, "
-                             "horizontal_ray_angle=%.6f deg, left_depth=%.6f m, right_depth=%.6f m, "
-                             "height_gap=%.6f m, distance=%.6f m, midpoint_x=%.6f m, "
-                             "left_dir=[%.6f, %.6f, %.6f], right_dir=[%.6f, %.6f, %.6f]",
-                             stereoTriangulationRejectionName(diagnostics.rejection),
-                             std::abs(stampSeconds(left.header) - stampSeconds(right.header)),
-                             diagnostics.baseline_m,
-                             diagnostics.ray_angle_deg,
-                             diagnostics.left_distance_m,
-                             diagnostics.right_distance_m,
-                             diagnostics.height_gap_m,
-                             diagnostics.distance_m,
-                             diagnostics.midpoint_x_m,
-                             left_direction[0],
-                             left_direction[1],
-                             left_direction[2],
-                             right_direction[0],
-                             right_direction[1],
-                             right_direction[2]);
+        RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 200,
+            "Stereo triangulation rejected: reason=%s, pair_delta=%.6f s, "
+            "baseline=%.6f m, "
+            "horizontal_ray_angle=%.6f deg, left_depth=%.6f m, right_depth=%.6f m, "
+            "height_gap=%.6f m, distance=%.6f m, midpoint_x=%.6f m, "
+            "left_dir=[%.6f, %.6f, %.6f], right_dir=[%.6f, %.6f, %.6f]",
+            stereoTriangulationRejectionName(diagnostics.rejection),
+            std::abs(stampSeconds(left.header) - stampSeconds(right.header)),
+            diagnostics.baseline_m, diagnostics.ray_angle_deg, diagnostics.left_distance_m,
+            diagnostics.right_distance_m, diagnostics.height_gap_m, diagnostics.distance_m,
+            diagnostics.midpoint_x_m, left_direction[0], left_direction[1], left_direction[2],
+            right_direction[0], right_direction[1], right_direction[2]);
         return;
     }
 

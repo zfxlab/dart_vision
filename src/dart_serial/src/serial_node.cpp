@@ -53,8 +53,7 @@ SerialNode::SerialNode(const rclcpp::NodeOptions& options) : Node("serial_node",
     joint_state_publisher_ =
         create_publisher<sensor_msgs::msg::JointState>(joint_state_topic_, rclcpp::SensorDataQoS());
     send_subscription_ = create_subscription<dart_interfaces::msg::AimCommand>(
-        send_topic_,
-        rclcpp::SensorDataQoS(),
+        send_topic_, rclcpp::SensorDataQoS(),
         std::bind(&SerialNode::sendCallback, this, std::placeholders::_1));
 
     const double sign = get_parameter("motor_to_joint_sign").as_double();
@@ -78,9 +77,7 @@ SerialNode::SerialNode(const rclcpp::NodeOptions& options) : Node("serial_node",
 
     RCLCPP_INFO(get_logger(),
                 "Serial node started: device=%s baud=%u send_topic=%s receive_topic=%s",
-                serial_config_.device.c_str(),
-                serial_config_.baud_rate,
-                send_topic_.c_str(),
+                serial_config_.device.c_str(), serial_config_.baud_rate, send_topic_.c_str(),
                 receive_topic_.c_str());
 }
 
@@ -160,39 +157,32 @@ void SerialNode::processBufferedFrames() {
         ParseResult result = packet_parser_.nextFrame();
 
         switch (result.status) {
-            case ParseStatus::kNeedMoreData:
-                return;
-            case ParseStatus::kFrameReady:
-                processFrame(result.frame);
-                break;
-            case ParseStatus::kCRCError: {
-                const auto expected = calculateCRC16(result.frame.data(),
-                                                     result.frame.size() - sizeof(std::uint16_t));
-                const auto received = static_cast<std::uint16_t>(
-                    result.frame[result.frame.size() - 2] |
-                    (static_cast<std::uint16_t>(result.frame.back()) << 8));
-                const auto frame_hex = bytesToHex(result.frame);
-                RCLCPP_WARN_THROTTLE(get_logger(),
-                                     *get_clock(),
-                                     2000,
-                                     "Received a %zu-byte frame with invalid CRC16: "
-                                     "expected=0x%04X received_le=0x%04X bytes=[%s]",
-                                     result.frame.size(),
-                                     static_cast<unsigned int>(expected),
-                                     static_cast<unsigned int>(received),
-                                     frame_hex.c_str());
-                break;
-            }
-            case ParseStatus::kUnknownHeader: {
-                const auto discarded_hex = bytesToHex(result.frame);
-                RCLCPP_WARN_THROTTLE(get_logger(),
-                                     *get_clock(),
-                                     2000,
-                                     "Discarded %zu byte(s) before a valid incoming header: [%s]",
-                                     result.frame.size(),
-                                     discarded_hex.c_str());
-                break;
-            }
+        case ParseStatus::kNeedMoreData:
+            return;
+        case ParseStatus::kFrameReady:
+            processFrame(result.frame);
+            break;
+        case ParseStatus::kCRCError: {
+            const auto expected =
+                calculateCRC16(result.frame.data(), result.frame.size() - sizeof(std::uint16_t));
+            const auto received =
+                static_cast<std::uint16_t>(result.frame[result.frame.size() - 2] |
+                                           (static_cast<std::uint16_t>(result.frame.back()) << 8));
+            const auto frame_hex = bytesToHex(result.frame);
+            RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                                 "Received a %zu-byte frame with invalid CRC16: "
+                                 "expected=0x%04X received_le=0x%04X bytes=[%s]",
+                                 result.frame.size(), static_cast<unsigned int>(expected),
+                                 static_cast<unsigned int>(received), frame_hex.c_str());
+            break;
+        }
+        case ParseStatus::kUnknownHeader: {
+            const auto discarded_hex = bytesToHex(result.frame);
+            RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                                 "Discarded %zu byte(s) before a valid incoming header: [%s]",
+                                 result.frame.size(), discarded_hex.c_str());
+            break;
+        }
         }
     }
 }
@@ -205,9 +195,7 @@ void SerialNode::processFrame(const std::vector<std::uint8_t>& frame) {
             return;
         }
 
-        RCLCPP_DEBUG_THROTTLE(get_logger(),
-                              *get_clock(),
-                              2000,
+        RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
                               "Controller logger: state=%u prepare=%u station=%u fire_finished=%u "
                               "shot=%u dart=%u door=%u vision_light=%u stable=%u autoaim=%u "
                               "force_L=%.3f force_R=%.3f",
@@ -256,8 +244,8 @@ void SerialNode::processFrame(const std::vector<std::uint8_t>& frame) {
 void SerialNode::sendCallback(const dart_interfaces::msg::AimCommand::ConstSharedPtr& message) {
     last_command_received_.store(now().seconds());
     if (!connected_.load()) {
-        RCLCPP_WARN_THROTTLE(
-            get_logger(), *get_clock(), 2000, "Dropping aim command: serial port is disconnected");
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                             "Dropping aim command: serial port is disconnected");
         return;
     }
 
@@ -299,10 +287,8 @@ bool SerialNode::tryOpenPort() {
         return true;
     } catch (const std::exception& error) {
         connected_.store(false);
-        RCLCPP_WARN(get_logger(),
-                    "Unable to open serial device %s: %s",
-                    serial_config_.device.c_str(),
-                    error.what());
+        RCLCPP_WARN(get_logger(), "Unable to open serial device %s: %s",
+                    serial_config_.device.c_str(), error.what());
         return false;
     }
 }

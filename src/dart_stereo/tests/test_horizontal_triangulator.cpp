@@ -14,7 +14,9 @@ void check(bool condition, const char* message) {
     }
 }
 
-bool close(double a, double b) { return std::abs(a - b) < 1e-8; }
+bool close(double a, double b) {
+    return std::abs(a - b) < 1e-8;
+}
 
 int main() {
     StereoTriangulatorConfig config;
@@ -23,7 +25,10 @@ int main() {
     const cv::Vec3d left{0.025, 0.15, 0.015}, right{0.025, -0.15, 0.015};
     const cv::Vec3d target{10.0, 2.0, 3.0};
     auto result = solver.triangulate(left, target - left, right, target - right);
-    check(result.has_value(), "Exact spatial intersection must succeed");
+    if (!result) {
+        std::cerr << "Exact spatial intersection must succeed\n";
+        return EXIT_FAILURE;
+    }
     check(cv::norm(result->position_m - target) < 1e-8, "Position must match known target");
     check(close(result->distance_m, std::hypot(10.0, 2.0)), "Distance must exclude height");
 
@@ -35,7 +40,10 @@ int main() {
     // 两路高度不同，水平交点必须保持不变，输出平均高度。
     const cv::Vec3d elevated{10.0, 2.0, 3.1};
     result = solver.triangulate(left, target - left, right, elevated - right);
-    check(result.has_value(), "Small height disagreement must succeed");
+    if (!result) {
+        std::cerr << "Small height disagreement must succeed\n";
+        return EXIT_FAILURE;
+    }
     check(close(result->position_m[0], 10.0) && close(result->position_m[1], 2.0),
           "Vertical disagreement must not shift horizontal intersection");
     check(close(result->position_m[2], 3.05) && close(result->height_gap_m, 0.1),
@@ -61,13 +69,13 @@ int main() {
 
     config.max_distance_m = 9.0;
     check(!StereoTriangulator(config).triangulate(left, target - left, right, target - right,
-                                                &diagnostics) &&
+                                                  &diagnostics) &&
               diagnostics.rejection == StereoTriangulationRejection::distance_too_large,
           "Horizontal distance limit must apply");
     config.max_distance_m = 50.0;
     config.min_depth_m = 20.0;
     check(!StereoTriangulator(config).triangulate(left, target - left, right, target - right,
-                                                &diagnostics) &&
+                                                  &diagnostics) &&
               diagnostics.rejection == StereoTriangulationRejection::depth_below_minimum,
           "Original spatial ray depth limit must apply");
     std::cout << "Horizontal triangulation checks passed\n";
