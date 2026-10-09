@@ -16,15 +16,22 @@ def generate_launch_description():
     cameras_file = LaunchConfiguration("cameras_file")
     detector_params_file = LaunchConfiguration("green_light_detector_params_file")
     stereo_params_file = LaunchConfiguration("stereo_triangulator_params_file")
+    site_file = LaunchConfiguration("site_file")
     use_sim_time = ParameterValue(LaunchConfiguration("use_sim_time"), value_type=bool)
 
-    config_directory = PathJoinSubstitution([FindPackageShare("dart_bringup"), "config", "camera"])
-    default_cameras_file = PathJoinSubstitution([config_directory, "cameras.yaml"])
+    bringup_share = FindPackageShare("dart_bringup")
+    config_directory = PathJoinSubstitution([bringup_share, "config"])
+    default_cameras_file = PathJoinSubstitution(
+        [config_directory, "camera", "cameras.yaml"]
+    )
     default_detector_params_file = PathJoinSubstitution(
         [config_directory, "green_light_detector.yaml"]
     )
     default_stereo_params_file = PathJoinSubstitution(
         [config_directory, "stereo_triangulator.yaml"]
+    )
+    default_site_file = PathJoinSubstitution(
+        [config_directory, "site", "default.yaml"]
     )
 
     description_launch = IncludeLaunchDescription(
@@ -34,7 +41,10 @@ def generate_launch_description():
             )
         ),
         condition=IfCondition(LaunchConfiguration("start_description")),
-        launch_arguments={"use_sim_time": LaunchConfiguration("use_sim_time")}.items(),
+        launch_arguments={
+            "site_file": site_file,
+            "use_sim_time": LaunchConfiguration("use_sim_time"),
+        }.items(),
     )
 
     camera_launch = IncludeLaunchDescription(
@@ -116,6 +126,11 @@ def generate_launch_description():
                 "stereo_triangulator_params_file",
                 default_value=default_stereo_params_file,
                 description="Stereo frame and triangulation parameter YAML file",
+            ),
+            DeclareLaunchArgument(
+                "site_file",
+                default_value=default_site_file,
+                description="Site configuration YAML file",
             ),
             description_launch,
             camera_launch,

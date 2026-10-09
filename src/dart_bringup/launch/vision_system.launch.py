@@ -35,7 +35,7 @@ def generate_launch_description():
                 }.items(),
             ),
             include(
-                "dart_serial",
+                "dart_bringup",
                 "serial.launch.py",
                 condition=IfCondition(LaunchConfiguration("start_serial")),
                 launch_arguments={"use_sim_time": sim}.items(),

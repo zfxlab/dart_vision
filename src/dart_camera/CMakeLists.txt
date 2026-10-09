@@ -32,6 +32,5 @@ rclcpp_components_register_node(dart_camera_component
 
 install(TARGETS dart_camera_core dart_camera_component ARCHIVE DESTINATION lib LIBRARY DESTINATION lib RUNTIME DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
-install(DIRECTORY config launch DESTINATION share/${PROJECT_NAME})
 
 ament_package()

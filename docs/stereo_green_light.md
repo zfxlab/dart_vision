@@ -141,7 +141,7 @@ ros2 launch dart_bringup vision_system.launch.py
 ```
 
 回放时可使用 `start_driver:=false`、`start_serial:=false` 和 `use_sim_time:=true`。
-相机、检测器和双目配置位于 `dart_bringup/config/camera/`，瞄准配置位于 `dart_bringup/config/aiming.yaml`。完整链路默认使用 `dart_serial/config/serial.yaml`。
+所有第一方运行配置统一位于 `dart_bringup/config/`。相机驱动与标定配置位于 `camera/`；绿灯检测、双目、瞄准和串口配置分别为 `green_light_detector.yaml`、`stereo_triangulator.yaml`、`aiming.yaml` 和 `serial.yaml`；场地配置位于 `site/default.yaml`。
 
 ```bash
 ros2 topic echo /stereo_target
