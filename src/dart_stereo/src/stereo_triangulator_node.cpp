@@ -5,7 +5,9 @@
 #include <functional>
 #include <geometry_msgs/msg/vector3_stamped.hpp>
 #include <limits>
+#include <rcl_interfaces/msg/parameter_descriptor.hpp>
 #include <rclcpp/logging.hpp>
+#include <std_msgs/msg/header.hpp>
 #include <stdexcept>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <utility>

@@ -16,6 +16,8 @@
   <exec_depend>dart_camera</exec_depend>
   <exec_depend>dart_stereo</exec_depend>
   <exec_depend>dart_aiming</exec_depend>
+  <exec_depend>livox_ros2_driver</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
 
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>

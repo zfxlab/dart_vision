@@ -7,6 +7,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_compile_options(-Wall -Wextra -Wpedantic)
 
 find_package(ament_cmake REQUIRED)
+find_package(builtin_interfaces REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rcl_interfaces REQUIRED)
 find_package(dart_interfaces REQUIRED)
@@ -21,6 +22,7 @@ add_executable(aiming_node src/aiming_main.cpp src/aiming_node.cpp)
 target_link_libraries(aiming_node aiming_core)
 ament_target_dependencies(
   aiming_node
+  builtin_interfaces
   rclcpp
   rcl_interfaces
   dart_interfaces

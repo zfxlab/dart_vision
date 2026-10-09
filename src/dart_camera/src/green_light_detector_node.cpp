@@ -7,7 +7,9 @@
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_msgs/msg/key_value.hpp>
 #include <functional>
+#include <geometry_msgs/msg/vector3.hpp>
 #include <opencv2/core.hpp>
+#include <rcl_interfaces/msg/parameter_descriptor.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
 #include <stdexcept>
 #include <string>

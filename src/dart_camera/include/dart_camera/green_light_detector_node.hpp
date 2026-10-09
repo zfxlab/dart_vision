@@ -4,6 +4,7 @@
 #include <deque>
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <mutex>
+#include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>

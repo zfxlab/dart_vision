@@ -5,6 +5,7 @@
 #include <functional>
 #include <geometry_msgs/msg/point_stamped.hpp>
 #include <limits>
+#include <rcl_interfaces/msg/parameter_descriptor.hpp>
 #include <rclcpp/create_timer.hpp>
 #include <stdexcept>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>

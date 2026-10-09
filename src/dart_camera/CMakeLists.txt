@@ -11,6 +11,7 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(rcl_interfaces REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(dart_interfaces REQUIRED)
@@ -23,7 +24,7 @@ target_link_libraries(dart_camera_core ${OpenCV_LIBS})
 add_library(dart_camera_component SHARED src/green_light_detector_node.cpp)
 target_include_directories(dart_camera_component PUBLIC include)
 target_link_libraries(dart_camera_component dart_camera_core)
-ament_target_dependencies(dart_camera_component rclcpp rclcpp_components rcl_interfaces diagnostic_msgs sensor_msgs cv_bridge dart_interfaces)
+ament_target_dependencies(dart_camera_component rclcpp rclcpp_components rcl_interfaces diagnostic_msgs geometry_msgs sensor_msgs cv_bridge dart_interfaces)
 rclcpp_components_register_node(dart_camera_component
   PLUGIN "dart_vision::camera::GreenLightDetectorNode"
   EXECUTABLE green_light_detector_node

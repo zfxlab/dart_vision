@@ -7,6 +7,7 @@
   <license>MIT</license>
   <buildtool_depend>ament_cmake</buildtool_depend>
 
+  <depend>builtin_interfaces</depend>
   <depend>rclcpp</depend>
   <depend>rcl_interfaces</depend>
   <depend>dart_interfaces</depend>

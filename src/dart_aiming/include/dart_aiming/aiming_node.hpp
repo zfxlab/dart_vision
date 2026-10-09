@@ -1,6 +1,7 @@
 #ifndef DART_AIMING_AIMING_NODE_HPP
 #define DART_AIMING_AIMING_NODE_HPP
 
+#include <builtin_interfaces/msg/time.hpp>
 #include <cstdint>
 #include <memory>
 #include <optional>
