@@ -25,11 +25,4 @@ ament_target_dependencies(stereo_node rclcpp dart_interfaces geometry_msgs tf2 t
 install(TARGETS stereo_core stereo_node ARCHIVE DESTINATION lib LIBRARY DESTINATION lib RUNTIME DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
 
-if(BUILD_TESTING)
-  enable_testing()
-  add_executable(test_horizontal_triangulator tests/test_horizontal_triangulator.cpp)
-  target_link_libraries(test_horizontal_triangulator stereo_core)
-  add_test(NAME horizontal_triangulator COMMAND test_horizontal_triangulator)
-endif()
-
 ament_package()

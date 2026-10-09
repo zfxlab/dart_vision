@@ -148,15 +148,6 @@ ros2 topic echo /stereo_target
 ros2 topic echo /aim_command
 ```
 
-完成构建并 source 工作空间后，可运行无硬件的 ROS 集成回归：
-
-```bash
-ROS_DOMAIN_ID=173 /usr/bin/python3 tools/tests/test_unit_ray_pipeline.py
-```
-
-测试覆盖图像与内参到达顺序、去畸变后的单位方向、缺失或无效标定、检测状态、
-不依赖 CameraInfo 的双目三角测量，以及非单位/非有限/反向射线的拒绝。
-
 ## dart_aiming C++ 结构
 
 - include/dart_aiming/aiming_core.hpp、src/aiming_core.cpp：不依赖 ROS 的几何计算和连续帧确认。
