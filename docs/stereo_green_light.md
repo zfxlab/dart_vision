@@ -164,13 +164,3 @@ ROS_DOMAIN_ID=173 /usr/bin/python3 tools/tests/test_unit_ray_pipeline.py
 - src/aiming_main.cpp：ROS 节点入口，仍使用 ros2 run dart_aiming aiming_node 启动。
 
 参数文件仍为 dart_bringup/config/aiming.yaml。启动参数保持兼容，reference_frame 现在表示 TF 变换后的输出参考系。
-
-## 离线残差标定界面
-
-测量记录、拟合对比和报告导出使用独立的本地网页工具：
-
-```bash
-bash tools/residual_calibration/run.sh
-```
-
-浏览器打开 http://127.0.0.1:8501。详细数据约定、项目恢复和导出格式见 [工具说明](../tools/residual_calibration/README.md)。工具不修改实时链路；生成的补偿 YAML 需后续在 C++ 节点中接入后才能生效。
