@@ -48,7 +48,7 @@ sudo rosdep init
 rosdep update
 ```
 
-仓库使用 Git LFS 管理模型、点云等大文件，并使用 Git 子模块管理相机驱动、机器人描述和
+仓库使用 Git LFS 管理模型、点云和 PDF 文档等大文件，并使用 Git 子模块管理相机驱动、机器人描述和
 Livox 驱动。首次拉取后执行：
 
 ```bash
