@@ -40,6 +40,14 @@ pipx install uv
 `clang-format` 使用仓库根目录的 `.clang-format`，`clang-tidy` 使用 `.clang-tidy`；`uv`
 用于创建隔离的 Python 工具环境并安装 Ruff，不参与 ROS 节点运行。
 
+首次安装 `rosdep` 后需要进行一次系统级初始化，之后普通用户更新依赖索引即可：
+
+```bash
+# 每台机器只需执行一次；已经初始化时跳过此命令
+sudo rosdep init
+rosdep update
+```
+
 仓库使用 Git LFS 管理模型、点云等大文件，并使用 Git 子模块管理相机驱动、机器人描述和
 Livox 驱动。首次拉取后执行：
 
@@ -61,6 +69,24 @@ source install/setup.bash
 
 相机驱动默认从仓库内的 MVS SDK 查找头文件和当前架构的运行库，不需要单独安装
 Hikrobot MVS。如需使用系统 SDK，可在构建时设置 `HIK_MVS_ROOT`。
+
+### 设备权限
+
+串口默认使用 `/dev/ttyACM0`。将当前用户加入 `dialout` 用户组后，需要注销并重新登录，
+新会话才会获得设备访问权限：
+
+```bash
+sudo usermod -aG dialout "$USER"
+
+# 重新登录后检查用户组和设备权限
+groups
+ls -l /dev/ttyACM0
+```
+
+不要使用 `chmod 777` 作为长期方案：设备重新插拔后权限会恢复。若设备节点不属于
+`dialout`，应根据实际 USB 设备添加精确的 udev 规则。Hikrobot 工业相机还需要厂商提供的
+udev 规则；出现 `device access denied` 时，应先确认 MVS 客户端能够取流并检查相机的 udev
+配置，同时确保没有其他程序以独占方式打开相机。
 
 ## 运行
 
