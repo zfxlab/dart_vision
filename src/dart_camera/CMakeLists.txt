@@ -17,7 +17,11 @@ find_package(cv_bridge REQUIRED)
 find_package(dart_interfaces REQUIRED)
 find_package(OpenCV REQUIRED)
 
-add_library(dart_camera_core src/green_light_detector.cpp src/bearing_solver.cpp)
+add_library(dart_camera_core
+  src/green_light_detector.cpp
+  src/bearing_solver.cpp
+  src/bearing_kalman_filter.cpp
+)
 set_target_properties(dart_camera_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(dart_camera_core PUBLIC include ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(dart_camera_core ${OpenCV_LIBS})

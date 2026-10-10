@@ -12,6 +12,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "dart_camera/bearing_kalman_filter.hpp"
 #include "dart_camera/green_light_detector.hpp"
 #include "dart_interfaces/msg/controller_state.hpp"
 #include "dart_interfaces/msg/green_light_detection.hpp"
@@ -23,6 +24,7 @@ class GreenLightDetectorNode : public rclcpp::Node {
   private:
     void declareParameters();
     void loadProfiles();
+    BearingKalmanFilterConfig readBearingKalmanFilterConfig() const;
     GreenLightDetectorConfig readGreenLightDetectorConfig(const std::string& prefix) const;
     rcl_interfaces::msg::SetParametersResult
     onParametersChanged(const std::vector<rclcpp::Parameter>&);
@@ -55,11 +57,16 @@ class GreenLightDetectorNode : public rclcpp::Node {
         double ambiguity_margin{};
     };
 
-    std::string image_topic_, detection_topic_;
+    std::string image_topic_, detection_topic_, filtered_detection_topic_;
     std::mutex profiles_mutex_;
     std::unordered_map<std::string, DetectorProfile> profiles_;
     std::unordered_map<std::uint8_t, std::string> mode_profiles_;
     std::optional<std::string> active_profile_;
+    std::optional<std::uint8_t> active_target_mode_;
+    std::mutex bearing_filter_mutex_;
+    BearingKalmanFilterConfig bearing_filter_config_;
+    std::unique_ptr<BearingKalmanFilter> bearing_filter_;
+    std::optional<rclcpp::Time> last_detection_stamp_;
     rclcpp::Subscription<dart_interfaces::msg::ControllerState>::SharedPtr controller_subscription_;
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_subscription_;
     rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_subscription_;
@@ -72,6 +79,8 @@ class GreenLightDetectorNode : public rclcpp::Node {
     sensor_msgs::msg::CameraInfo::ConstSharedPtr latest_camera_info_;
     rclcpp::TimerBase::SharedPtr camera_info_timer_;
     rclcpp::Publisher<dart_interfaces::msg::GreenLightDetection>::SharedPtr detection_publisher_;
+    rclcpp::Publisher<dart_interfaces::msg::GreenLightDetection>::SharedPtr
+        filtered_detection_publisher_;
     rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diagnostics_publisher_;
     rclcpp::TimerBase::SharedPtr diagnostics_timer_;
     rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr parameter_callback_;

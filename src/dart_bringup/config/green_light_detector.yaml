@@ -2,8 +2,16 @@
   ros__parameters:
     image_topic: image_raw
     detection_topic: detection
+    filtered_detection_topic: detection_filtered
     camera_info_topic: camera_info
     controller_topic: /controller_state
+
+    # 分别对单位射线的水平角和垂直角进行一维 Kalman 滤波。
+    kalman_filter:
+      process_noise_rad2_per_s: 0.01
+      measurement_noise_rad2: 0.0025
+      initial_uncertainty_rad2: 0.01
+      max_time_step_s: 0.1
 
     # target_mode=0 使用前哨站配置，其他现有模式使用基地配置。
     # 两套参数当前保持一致，可在完成前哨站采样后分别调整。

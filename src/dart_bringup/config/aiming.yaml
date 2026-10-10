@@ -7,14 +7,12 @@
     reference_frame: launcher_frame
     target_timeout_s: 0.2
     controller_timeout_s: 0.3
-    # 距离滑动平均窗口；填满后才输出 VALID，1 表示不平滑。修改后重启。
-    distance_average_frames: 25
     max_height_gap_m: 0.1
     supported_target_modes: [0, 1, 2, 3, 4]
 
     # 每个模型可选择多个 target_mode，同一个 mode 只能属于一个模型。
     # 系数顺序为 [a, b, c]，直接输出 a*x^2 + b*x + c，而非计算残差。
-    # yaw 的 x 为几何 yaw；distance 的 x 为平滑后的几何距离；当前均为恒等映射。
+    # yaw 的 x 为几何 yaw；distance 的 x 为几何距离；当前均为恒等映射。
     fitting:
       model_names: [outpost, fixed, moving]
       models:

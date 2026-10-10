@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
-    left_detection_topic: /left_camera/detection
-    right_detection_topic: /right_camera/detection
+    left_detection_topic: /left_camera/detection_filtered
+    right_detection_topic: /right_camera/detection_filtered
     result_topic: /stereo_target
     left_frame_id: left_camera_optical_frame
     right_frame_id: right_camera_optical_frame

@@ -57,12 +57,21 @@ GreenLightDetectorNode::GreenLightDetectorNode(const rclcpp::NodeOptions& option
       previous_diagnostic_time_(std::chrono::steady_clock::now()) {
     declareParameters();
     loadProfiles();
+    bearing_filter_config_ = readBearingKalmanFilterConfig();
+    bearing_filter_ = std::make_unique<BearingKalmanFilter>(bearing_filter_config_);
 
     image_topic_ = get_parameter("image_topic").as_string();
     detection_topic_ = get_parameter("detection_topic").as_string();
+    filtered_detection_topic_ = get_parameter("filtered_detection_topic").as_string();
+    if (image_topic_.empty() || detection_topic_.empty() || filtered_detection_topic_.empty() ||
+        detection_topic_ == filtered_detection_topic_)
+        throw std::invalid_argument(
+            "Detector input, raw output and filtered output topics invalid");
 
     detection_publisher_ = create_publisher<dart_interfaces::msg::GreenLightDetection>(
         detection_topic_, rclcpp::SensorDataQoS());
+    filtered_detection_publisher_ = create_publisher<dart_interfaces::msg::GreenLightDetection>(
+        filtered_detection_topic_, rclcpp::SensorDataQoS());
     diagnostics_publisher_ =
         create_publisher<diagnostic_msgs::msg::DiagnosticArray>("/diagnostics", rclcpp::QoS(10));
     diagnostics_timer_ = create_wall_timer(
@@ -85,9 +94,10 @@ GreenLightDetectorNode::GreenLightDetectorNode(const rclcpp::NodeOptions& option
         std::bind(&GreenLightDetectorNode::onParametersChanged, this, std::placeholders::_1));
 
     RCLCPP_INFO(get_logger(),
-                "Green-light detector listening on '%s', publishing observations on '%s' with "
+                "Green-light detector listening on '%s', publishing raw='%s', filtered='%s' with "
                 "%zu target profiles",
-                image_topic_.c_str(), detection_topic_.c_str(), profiles_.size());
+                image_topic_.c_str(), detection_topic_.c_str(), filtered_detection_topic_.c_str(),
+                profiles_.size());
 }
 
 void GreenLightDetectorNode::declareParameters() {
@@ -98,8 +108,18 @@ void GreenLightDetectorNode::declareParameters() {
 
     declare_parameter<std::string>("image_topic", "image_raw", read_only);
     declare_parameter<std::string>("detection_topic", "detection", read_only);
+    declare_parameter<std::string>("filtered_detection_topic", "detection_filtered", read_only);
     declare_parameter<std::string>("camera_info_topic", "camera_info", read_only);
     declare_parameter<std::string>("controller_topic", "/controller_state", read_only);
+    const BearingKalmanFilterConfig filter_defaults;
+    declare_parameter<double>("kalman_filter.process_noise_rad2_per_s",
+                              filter_defaults.process_noise_rad2_per_s, read_only);
+    declare_parameter<double>("kalman_filter.measurement_noise_rad2",
+                              filter_defaults.measurement_noise_rad2, read_only);
+    declare_parameter<double>("kalman_filter.initial_uncertainty_rad2",
+                              filter_defaults.initial_uncertainty_rad2, read_only);
+    declare_parameter<double>("kalman_filter.max_time_step_s", filter_defaults.max_time_step_s,
+                              read_only);
     const auto profile_names = declare_parameter<std::vector<std::string>>(
         "profiles.names", std::vector<std::string>{"default"}, read_only);
     if (profile_names.empty())
@@ -140,6 +160,20 @@ void GreenLightDetectorNode::declareParameters() {
                                defaults.cleanup.open_iterations);
         declare_parameter<bool>(prefix + "mask_cleanup.fill_holes", defaults.cleanup.fill_holes);
     }
+}
+
+BearingKalmanFilterConfig GreenLightDetectorNode::readBearingKalmanFilterConfig() const {
+    BearingKalmanFilterConfig config;
+    config.process_noise_rad2_per_s =
+        get_parameter("kalman_filter.process_noise_rad2_per_s").as_double();
+    config.measurement_noise_rad2 =
+        get_parameter("kalman_filter.measurement_noise_rad2").as_double();
+    config.initial_uncertainty_rad2 =
+        get_parameter("kalman_filter.initial_uncertainty_rad2").as_double();
+    config.max_time_step_s = get_parameter("kalman_filter.max_time_step_s").as_double();
+    if (!config.isConfigValid())
+        throw std::invalid_argument("Invalid bearing Kalman filter parameters");
+    return config;
 }
 
 GreenLightDetectorConfig
@@ -210,8 +244,10 @@ GreenLightDetectorNode::onParametersChanged(const std::vector<rclcpp::Parameter>
     try {
         for (const auto& parameter : parameters) {
             const std::string& name = parameter.get_name();
-            if (name == "image_topic" || name == "detection_topic" || name == "camera_info_topic" ||
+            if (name == "image_topic" || name == "detection_topic" ||
+                name == "filtered_detection_topic" || name == "camera_info_topic" ||
                 name == "controller_topic" || name == "profiles.names" ||
+                name.rfind("kalman_filter.", 0) == 0 ||
                 (name.rfind("profiles.", 0) == 0 && endsWith(name, ".modes"))) {
                 return parameterFailure(name + " cannot be changed while the node is running");
             }
@@ -274,8 +310,16 @@ GreenLightDetectorNode::onParametersChanged(const std::vector<rclcpp::Parameter>
         profile.detector = std::make_shared<GreenLightDetector>(profile.config);
     }
     if (!changed_profiles.empty()) {
+        bool active_profile_changed = false;
         std::lock_guard<std::mutex> lock(profiles_mutex_);
+        active_profile_changed =
+            active_profile_ && changed_profiles.find(*active_profile_) != changed_profiles.end();
         profiles_ = std::move(updated_profiles);
+        if (active_profile_changed) {
+            std::lock_guard<std::mutex> filter_lock(bearing_filter_mutex_);
+            bearing_filter_->reset();
+            last_detection_stamp_.reset();
+        }
     }
 
     rcl_interfaces::msg::SetParametersResult result;
@@ -290,6 +334,12 @@ void GreenLightDetectorNode::controllerCallback(
         {
             std::lock_guard<std::mutex> lock(profiles_mutex_);
             active_profile_.reset();
+            active_target_mode_.reset();
+        }
+        {
+            std::lock_guard<std::mutex> lock(bearing_filter_mutex_);
+            bearing_filter_->reset();
+            last_detection_stamp_.reset();
         }
         pending_images_.clear();
         RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
@@ -298,14 +348,22 @@ void GreenLightDetectorNode::controllerCallback(
         return;
     }
 
-    bool changed = false;
+    bool profile_changed = false;
+    bool mode_changed = false;
     {
         std::lock_guard<std::mutex> lock(profiles_mutex_);
-        changed = !active_profile_ || *active_profile_ != selected->second;
+        profile_changed = !active_profile_ || *active_profile_ != selected->second;
+        mode_changed = !active_target_mode_ || *active_target_mode_ != controller->target_mode;
         active_profile_ = selected->second;
+        active_target_mode_ = controller->target_mode;
     }
-    if (changed) {
+    if (mode_changed) {
+        std::lock_guard<std::mutex> lock(bearing_filter_mutex_);
+        bearing_filter_->reset();
+        last_detection_stamp_.reset();
         pending_images_.clear();
+    }
+    if (profile_changed) {
         RCLCPP_INFO(get_logger(), "Selected green-light detector profile '%s' for target mode %u",
                     selected->second.c_str(), static_cast<unsigned int>(controller->target_mode));
     }
@@ -340,8 +398,8 @@ void GreenLightDetectorNode::processImage(
     const sensor_msgs::msg::CameraInfo::ConstSharedPtr& info) {
     using Detection = dart_interfaces::msg::GreenLightDetection;
     const auto processing_start = std::chrono::steady_clock::now();
-    Detection message;
-    message.header = image->header;
+    Detection raw_message;
+    raw_message.header = image->header;
     std::shared_ptr<GreenLightDetector> detector;
     double ambiguity_margin = 0.0;
     {
@@ -362,10 +420,10 @@ void GreenLightDetectorNode::processImage(
         auto& candidates = result.candidates;
         std::sort(candidates.begin(), candidates.end(),
                   [](const auto& a, const auto& b) { return a.fit_score > b.fit_score; });
-        message.status = result.contours_count == 0 ? Detection::CLOSED : Detection::NO_TARGET;
+        raw_message.status = result.contours_count == 0 ? Detection::CLOSED : Detection::NO_TARGET;
         if (candidates.size() > 1 &&
             candidates[0].fit_score - candidates[1].fit_score < ambiguity_margin) {
-            message.status = Detection::NO_TARGET;
+            raw_message.status = Detection::NO_TARGET;
         } else if (!candidates.empty()) {
             const auto& target = candidates.front();
             if (!info || info->header.frame_id.empty() ||
@@ -384,19 +442,64 @@ void GreenLightDetectorNode::processImage(
             const auto ray = BearingSolver(config).calculateUnitBearing(target.center_px);
             if (!ray)
                 throw std::runtime_error("Cannot calculate target unit ray");
-            message.status = Detection::DETECTED;
-            message.unit_ray.x = (*ray)[0];
-            message.unit_ray.y = (*ray)[1];
-            message.unit_ray.z = (*ray)[2];
-            message.score = target.fit_score;
+            raw_message.status = Detection::DETECTED;
+            raw_message.unit_ray.x = (*ray)[0];
+            raw_message.unit_ray.y = (*ray)[1];
+            raw_message.unit_ray.z = (*ray)[2];
+            raw_message.score = target.fit_score;
         }
     } catch (const std::exception& e) {
-        message.status = Detection::ERROR;
-        message.unit_ray = geometry_msgs::msg::Vector3{};
-        message.score = 0.0;
+        raw_message.status = Detection::ERROR;
+        raw_message.unit_ray = geometry_msgs::msg::Vector3{};
+        raw_message.score = 0.0;
         RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "%s", e.what());
     }
-    detection_publisher_->publish(message);
+
+    Detection filtered_message = raw_message;
+    if (raw_message.status == Detection::DETECTED) {
+        try {
+            const rclcpp::Time current_stamp(raw_message.header.stamp);
+            double time_step = bearing_filter_config_.max_time_step_s;
+            cv::Vec3d filtered_bearing;
+            {
+                std::lock_guard<std::mutex> lock(bearing_filter_mutex_);
+                if (last_detection_stamp_) {
+                    const double measured_time_step =
+                        (current_stamp - *last_detection_stamp_).seconds();
+                    if (measured_time_step > 0.0) {
+                        time_step = measured_time_step;
+                    } else {
+                        bearing_filter_->reset();
+                    }
+                }
+                filtered_bearing = bearing_filter_->update(cv::Vec3d{raw_message.unit_ray.x,
+                                                                     raw_message.unit_ray.y,
+                                                                     raw_message.unit_ray.z},
+                                                           time_step);
+                last_detection_stamp_ = current_stamp;
+            }
+            filtered_message.unit_ray.x = filtered_bearing[0];
+            filtered_message.unit_ray.y = filtered_bearing[1];
+            filtered_message.unit_ray.z = filtered_bearing[2];
+        } catch (const std::exception& error) {
+            {
+                std::lock_guard<std::mutex> lock(bearing_filter_mutex_);
+                bearing_filter_->reset();
+                last_detection_stamp_.reset();
+            }
+            filtered_message.status = Detection::ERROR;
+            filtered_message.unit_ray = geometry_msgs::msg::Vector3{};
+            filtered_message.score = 0.0;
+            RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                                 "Bearing Kalman filter failed: %s", error.what());
+        }
+    } else {
+        std::lock_guard<std::mutex> lock(bearing_filter_mutex_);
+        bearing_filter_->reset();
+        last_detection_stamp_.reset();
+    }
+    detection_publisher_->publish(raw_message);
+    filtered_detection_publisher_->publish(filtered_message);
 
     const auto processing_end = std::chrono::steady_clock::now();
     const auto processing_time =
@@ -409,7 +512,7 @@ void GreenLightDetectorNode::processImage(
     statistics.max_processing_time_interval =
         std::max(statistics.max_processing_time_interval, processing_time);
     statistics.last_processed_time = processing_end;
-    switch (message.status) {
+    switch (filtered_message.status) {
     case Detection::DETECTED:
         ++statistics.detected_total;
         ++statistics.detected_interval;

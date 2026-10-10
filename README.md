@@ -136,9 +136,9 @@ ros2 launch dart_bringup camera_system.launch.py --show-args
 | 包 | 职责 |
 | --- | --- |
 | `dart_interfaces` | 定义检测、双目目标、控制器状态和瞄准指令消息 |
-| `dart_camera` | 分割绿色区域、筛选圆形目标，并由 `CameraInfo` 计算单位视线 |
+| `dart_camera` | 分割绿色区域、筛选圆形目标，并计算和滤波单位视线 |
 | `dart_stereo` | 配对左右检测结果，使用 TF 在双目中心坐标系中进行三角测量 |
-| `dart_aiming` | 将目标变换到发射架坐标系，执行距离平滑、函数拟合和偏角补偿 |
+| `dart_aiming` | 将目标变换到发射架坐标系，执行函数拟合和偏角补偿 |
 | `dart_serial` | 解析控制器数据、发布关节状态并发送瞄准指令 |
 | `dart_bringup` | 集中管理项目 launch 文件和运行配置 |
 
@@ -158,14 +158,14 @@ ros2 launch dart_bringup camera_system.launch.py --show-args
 | `camera/calibration/*.yaml` | 各相机内参和畸变参数 |
 | `green_light_detector.yaml` | 按目标模式切换的颜色分割、几何、亮度和掩膜清理参数 |
 | `stereo_triangulator.yaml` | 左右话题、配对时差和双目几何限制 |
-| `aiming.yaml` | 超时、距离平滑、目标模式及二次函数拟合模型 |
+| `aiming.yaml` | 超时、目标模式及二次函数拟合模型 |
 | `serial.yaml` | 串口设备、波特率、话题和电机角度校正 |
 | `site/default.yaml` | 红蓝方选择及场地坐标修正 |
 | `lidar/` | Livox 驱动与设备配置 |
 
 `aiming.yaml` 中的 `fitting.models` 可配置多个模型，并通过 `modes` 选择适用的目标模式。
 `yaw_coefficients` 和 `distance_coefficients` 均按 `[a, b, c]` 配置，直接输出
-`a*x^2 + b*x + c`；yaw 使用几何 yaw 作为输入，distance 使用平滑后的几何距离作为输入。
+`a*x^2 + b*x + c`；yaw 使用几何 yaw 作为输入，distance 使用几何距离作为输入。
 
 `green_light_detector.yaml` 中的 `profiles` 将识别参数映射到控制器 `target_mode`：`outpost`
 用于模式 `0`，`base` 用于模式 `1` 至 `4`。左右检测节点会订阅 `/controller_state` 并自动
@@ -183,7 +183,8 @@ ros2 launch dart_bringup camera_system.launch.py --show-args
 | --- | --- | --- |
 | `/left_camera/image_raw`、`/right_camera/image_raw` | `sensor_msgs/msg/Image` | 左右原始图像 |
 | `/left_camera/camera_info`、`/right_camera/camera_info` | `sensor_msgs/msg/CameraInfo` | 与图像同时间戳的相机参数 |
-| `/left_camera/detection`、`/right_camera/detection` | `dart_interfaces/msg/GreenLightDetection` | 相机光学坐标系中的目标单位视线 |
+| `/left_camera/detection`、`/right_camera/detection` | `dart_interfaces/msg/GreenLightDetection` | 相机光学坐标系中的原始目标单位视线 |
+| `/left_camera/detection_filtered`、`/right_camera/detection_filtered` | `dart_interfaces/msg/GreenLightDetection` | Kalman 滤波后的目标单位视线，供双目节点使用 |
 | `/stereo_target` | `dart_interfaces/msg/StereoTarget` | 双目中心坐标系中的三维目标 |
 | `/controller_state` | `dart_interfaces/msg/ControllerState` | 目标模式、飞镖偏角和电机反馈角 |
 | `/aim_command` | `dart_interfaces/msg/AimCommand` | 发射架坐标系中的偏转角和水平距离 |
@@ -210,7 +211,7 @@ ros2 topic echo /aim_command
 
 - `CLOSED` 表示清理后的绿色掩膜中没有轮廓，由视觉结果推断舱门关闭。
 - 双目仅在左右相机都为 `DETECTED` 且 TF 与几何检查通过时产生 `VALID`。
-- 瞄准仅在目标和控制器状态未超时、TF 可用且距离平滑窗口填满时产生 `VALID`。
+- 瞄准仅在目标和控制器状态未超时且 TF 可用时产生 `VALID`。
 - 非有效状态下的位置、角度和距离字段均为零。
 - 串口线协议使用 `0=CLOSED`、`1=VALID`、`2=INVALID`；下位机必须使用相同语义。
 

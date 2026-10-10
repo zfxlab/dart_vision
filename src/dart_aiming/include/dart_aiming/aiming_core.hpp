@@ -2,8 +2,6 @@
 #define DART_AIMING_AIMING_CORE_HPP
 
 #include <array>
-#include <cstddef>
-#include <deque>
 #include <optional>
 
 namespace dart_vision::aiming {
@@ -31,18 +29,6 @@ class QuadraticAimModel {
 
 /// 加入控制器给出的飞镖固定偏角。
 [[nodiscard]] std::optional<Aim> applyDartOffset(const Aim& input, double offset_rad) noexcept;
-
-/// 对新的有效距离取滑动平均；窗口填满前不返回输出。
-class DistanceMovingAverage {
-  public:
-    explicit DistanceMovingAverage(int window_frames);
-    void reset() noexcept;
-    [[nodiscard]] std::optional<double> update(double distance_m);
-
-  private:
-    std::size_t window_frames_;
-    std::deque<double> samples_;
-};
 
 } // namespace dart_vision::aiming
 #endif // DART_AIMING_AIMING_CORE_HPP
