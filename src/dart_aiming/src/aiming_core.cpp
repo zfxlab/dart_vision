@@ -83,27 +83,4 @@ std::optional<double> DistanceMovingAverage::update(double distance_m) {
     return mean;
 }
 
-Stability::Stability(int frames, double yaw_step, double distance_step)
-    : frames_(frames), yaw_step_(yaw_step), distance_step_(distance_step) {
-    if (frames < 1 || !std::isfinite(yaw_step) || yaw_step <= 0.0 ||
-        !std::isfinite(distance_step) || distance_step <= 0.0)
-        throw std::invalid_argument("Invalid stability thresholds");
-}
-
-void Stability::reset() noexcept {
-    previous_.reset();
-    count_ = 0;
-}
-
-bool Stability::update(const Aim& aim) noexcept {
-    if (previous_ &&
-        std::abs(wrapAngle(aim.yaw_error_rad - previous_->yaw_error_rad)) <= yaw_step_ &&
-        std::abs(aim.distance_m - previous_->distance_m) <= distance_step_) {
-        count_ = std::min(count_ + 1, frames_);
-    } else {
-        count_ = 1;
-    }
-    previous_ = aim;
-    return count_ >= frames_;
-}
 } // namespace dart_vision::aiming

@@ -45,9 +45,6 @@ AimingNode::AimingNode(const rclcpp::NodeOptions& options) : Node("aiming", opti
     controller_timeout_s_ = declare_parameter<double>("controller_timeout_s", 0.3, read_only);
     const int average_frames = declare_parameter<int>("distance_average_frames", 20, read_only);
     max_height_gap_m_ = declare_parameter<double>("max_height_gap_m", 0.1, read_only);
-    const int frames = declare_parameter<int>("confirmation_frames", 3, read_only);
-    const double yaw_step = declare_parameter<double>("max_yaw_step_rad", 0.02, read_only);
-    const double distance_step = declare_parameter<double>("max_distance_step_m", 0.3, read_only);
     supported_target_modes_ = declare_parameter<std::vector<std::int64_t>>("supported_target_modes",
                                                                            {1, 2, 3, 4}, read_only);
     const auto fitting_model_names = declare_parameter<std::vector<std::string>>(
@@ -93,7 +90,6 @@ AimingNode::AimingNode(const rclcpp::NodeOptions& options) : Node("aiming", opti
                                             std::to_string(mode));
         }
     }
-    stability_ = std::make_unique<Stability>(frames, yaw_step, distance_step);
     distance_average_ = std::make_unique<DistanceMovingAverage>(average_frames);
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
     tf_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_);
@@ -115,7 +111,6 @@ bool AimingNode::fresh(const builtin_interfaces::msg::Time& stamp, double timeou
 }
 
 void AimingNode::invalidate(bool preserve_closed) {
-    stability_->reset();
     distance_average_->reset();
     if (preserve_closed && command_ && command_->state == AimCommand::CLOSED)
         return;
@@ -199,8 +194,6 @@ void AimingNode::onTarget(StereoTarget::ConstSharedPtr target) {
         invalidate();
         return;
     }
-    // 稳定性确认使用原始测量，避免平均掩盖相邻帧的异常变化。
-    const bool stable = stability_->update(*geometric_aim);
     const auto mean_distance = distance_average_->update(geometric_aim->distance_m);
     Aim averaged_aim = *geometric_aim;
     if (mean_distance)
@@ -220,7 +213,7 @@ void AimingNode::onTarget(StereoTarget::ConstSharedPtr target) {
     }
     AimCommand command;
     command.state = AimCommand::INVALID;
-    if (stable && mean_distance) {
+    if (mean_distance) {
         command.state = AimCommand::VALID;
         command.yaw_error_rad = static_cast<float>(final_aim->yaw_error_rad);
         command.distance_m = static_cast<float>(final_aim->distance_m);

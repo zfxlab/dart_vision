@@ -44,19 +44,5 @@ class DistanceMovingAverage {
     std::deque<double> samples_;
 };
 
-/// 使用相邻测量的变化量确认连续帧稳定性，不对结果取平均。
-class Stability {
-  public:
-    Stability(int frames, double yaw_step, double distance_step);
-    void reset() noexcept;
-    [[nodiscard]] bool update(const Aim& aim) noexcept;
-
-  private:
-    int frames_;
-    double yaw_step_, distance_step_;
-    std::optional<Aim> previous_;
-    int count_{};
-};
-
 } // namespace dart_vision::aiming
 #endif // DART_AIMING_AIMING_CORE_HPP
