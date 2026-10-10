@@ -201,6 +201,20 @@ ros2 topic echo /stereo_target
 ros2 topic echo /aim_command
 ```
 
+## 日志与诊断
+
+运行时事件通过 `/rosout` 输出，相机处理状态通过 `/diagnostics` 以 1 Hz 发布：
+
+```bash
+ros2 topic echo /rosout
+ros2 topic echo /diagnostics
+```
+
+节点启动、模式切换和串口连接使用 `INFO`；持续影响输出的 TF、配对和连接问题使用
+`WARN`，最多每 5 秒提醒一次；逐帧三角测量拒绝详情使用 `DEBUG`，最多每秒一次；串口
+协议错误最多每 2 秒一次，串口重连失败最多每 10 秒一次。高频测量数据应通过 rosbag
+记录，不通过日志逐帧输出。
+
 ## 状态语义
 
 | 阶段 | 有效状态 | 其他状态 |

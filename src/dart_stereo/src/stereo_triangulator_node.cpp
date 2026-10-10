@@ -14,6 +14,9 @@
 
 namespace dart_vision::stereo {
 namespace {
+constexpr int kDebugThrottleMs = 1000;
+constexpr int kWarningThrottleMs = 5000;
+
 double stampSeconds(const std_msgs::msg::Header& header) {
     return rclcpp::Time(header.stamp).seconds();
 }
@@ -129,7 +132,7 @@ void StereoTriangulatorNode::matchQueuedObservations() {
             break;
         }
         RCLCPP_WARN_THROTTLE(
-            get_logger(), *get_clock(), 2000,
+            get_logger(), *get_clock(), kWarningThrottleMs,
             "Dropping unmatched stereo observation; closest timestamp delta %.4f s", best_delta);
     }
 }
@@ -183,7 +186,7 @@ void StereoTriangulatorNode::processPair(const GreenLightDetection& left,
         transform_ray(right_frame_id_, *rb, right_origin, right_direction);
     } catch (const tf2::TransformException& error) {
         publishFailure(left, right, StereoTarget::INVALID);
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), kWarningThrottleMs,
                              "Stereo reference transform unavailable: %s", error.what());
         return;
     }
@@ -192,8 +195,8 @@ void StereoTriangulatorNode::processPair(const GreenLightDetection& left,
                                                    right_direction, &diagnostics);
     if (!result) {
         publishFailure(left, right, StereoTarget::INVALID);
-        RCLCPP_WARN_THROTTLE(
-            get_logger(), *get_clock(), 200,
+        RCLCPP_DEBUG_THROTTLE(
+            get_logger(), *get_clock(), kDebugThrottleMs,
             "Stereo triangulation rejected: reason=%s, pair_delta=%.6f s, "
             "baseline=%.6f m, "
             "horizontal_ray_angle=%.6f deg, left_depth=%.6f m, right_depth=%.6f m, "

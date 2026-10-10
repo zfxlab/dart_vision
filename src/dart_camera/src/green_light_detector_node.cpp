@@ -23,6 +23,9 @@
 
 namespace dart_vision::camera {
 namespace {
+constexpr int kWarningThrottleMs = 5000;
+constexpr auto kDiagnosticsPeriod = std::chrono::seconds(1);
+
 rcl_interfaces::msg::SetParametersResult parameterFailure(const std::string& reason) {
     rcl_interfaces::msg::SetParametersResult result;
     result.successful = false;
@@ -75,7 +78,7 @@ GreenLightDetectorNode::GreenLightDetectorNode(const rclcpp::NodeOptions& option
     diagnostics_publisher_ =
         create_publisher<diagnostic_msgs::msg::DiagnosticArray>("/diagnostics", rclcpp::QoS(10));
     diagnostics_timer_ = create_wall_timer(
-        std::chrono::seconds(1), std::bind(&GreenLightDetectorNode::publishDiagnostics, this));
+        kDiagnosticsPeriod, std::bind(&GreenLightDetectorNode::publishDiagnostics, this));
     camera_info_subscription_ = create_subscription<sensor_msgs::msg::CameraInfo>(
         get_parameter("camera_info_topic").as_string(), rclcpp::SensorDataQoS(),
         [this](sensor_msgs::msg::CameraInfo::ConstSharedPtr info) {
@@ -342,7 +345,7 @@ void GreenLightDetectorNode::controllerCallback(
             last_detection_stamp_.reset();
         }
         pending_images_.clear();
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), kWarningThrottleMs,
                              "No green-light detector profile for target mode %u",
                              static_cast<unsigned int>(controller->target_mode));
         return;
@@ -452,7 +455,7 @@ void GreenLightDetectorNode::processImage(
         raw_message.status = Detection::ERROR;
         raw_message.unit_ray = geometry_msgs::msg::Vector3{};
         raw_message.score = 0.0;
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "%s", e.what());
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), kWarningThrottleMs, "%s", e.what());
     }
 
     Detection filtered_message = raw_message;
@@ -490,7 +493,7 @@ void GreenLightDetectorNode::processImage(
             filtered_message.status = Detection::ERROR;
             filtered_message.unit_ray = geometry_msgs::msg::Vector3{};
             filtered_message.score = 0.0;
-            RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+            RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), kWarningThrottleMs,
                                  "Bearing Kalman filter failed: %s", error.what());
         }
     } else {

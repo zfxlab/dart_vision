@@ -13,6 +13,11 @@
 
 namespace dart_vision::serial {
 namespace {
+constexpr int kProtocolWarningThrottleMs = 2000;
+constexpr int kWarningThrottleMs = 5000;
+constexpr int kErrorThrottleMs = 5000;
+constexpr int kReconnectReminderMs = 10000;
+constexpr int kControllerDebugThrottleMs = 2000;
 
 std::string bytesToHex(const std::vector<std::uint8_t>& bytes) {
     std::ostringstream stream;
@@ -146,7 +151,8 @@ void SerialNode::receiveLoop() {
             packet_parser_.append(read_buffer.data(), bytes_read);
             processBufferedFrames();
         } catch (const std::exception& error) {
-            RCLCPP_ERROR(get_logger(), "Serial receive failed: %s", error.what());
+            RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), kErrorThrottleMs,
+                                  "Serial receive failed: %s", error.what());
             requestReconnect();
         }
     }
@@ -169,7 +175,7 @@ void SerialNode::processBufferedFrames() {
                 static_cast<std::uint16_t>(result.frame[result.frame.size() - 2] |
                                            (static_cast<std::uint16_t>(result.frame.back()) << 8));
             const auto frame_hex = bytesToHex(result.frame);
-            RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+            RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), kProtocolWarningThrottleMs,
                                  "Received a %zu-byte frame with invalid CRC16: "
                                  "expected=0x%04X received_le=0x%04X bytes=[%s]",
                                  result.frame.size(), static_cast<unsigned int>(expected),
@@ -178,7 +184,7 @@ void SerialNode::processBufferedFrames() {
         }
         case ParseStatus::kUnknownHeader: {
             const auto discarded_hex = bytesToHex(result.frame);
-            RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+            RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), kProtocolWarningThrottleMs,
                                  "Discarded %zu byte(s) before a valid incoming header: [%s]",
                                  result.frame.size(), discarded_hex.c_str());
             break;
@@ -191,11 +197,12 @@ void SerialNode::processFrame(const std::vector<std::uint8_t>& frame) {
     if (!frame.empty() && packetTypeFromHeader(frame.front()) == PacketType::kLogger) {
         const auto packet = decodeLoggerPacket(frame);
         if (!packet.has_value()) {
-            RCLCPP_WARN(get_logger(), "A parser-approved logger frame failed packet decoding");
+            RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), kProtocolWarningThrottleMs,
+                                 "A parser-approved logger frame failed packet decoding");
             return;
         }
 
-        RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
+        RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), kControllerDebugThrottleMs,
                               "Controller logger: state=%u prepare=%u station=%u fire_finished=%u "
                               "shot=%u dart=%u door=%u vision_light=%u stable=%u autoaim=%u "
                               "force_L=%.3f force_R=%.3f",
@@ -216,7 +223,8 @@ void SerialNode::processFrame(const std::vector<std::uint8_t>& frame) {
 
     const auto packet = decodeReceivePacket(frame);
     if (!packet.has_value()) {
-        RCLCPP_WARN(get_logger(), "A parser-approved receive frame failed packet decoding");
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), kProtocolWarningThrottleMs,
+                             "A parser-approved receive frame failed packet decoding");
         return;
     }
 
@@ -244,7 +252,7 @@ void SerialNode::processFrame(const std::vector<std::uint8_t>& frame) {
 void SerialNode::sendCallback(const dart_interfaces::msg::AimCommand::ConstSharedPtr& message) {
     last_command_received_.store(now().seconds());
     if (!connected_.load()) {
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), kWarningThrottleMs,
                              "Dropping aim command: serial port is disconnected");
         return;
     }
@@ -273,7 +281,8 @@ void SerialNode::sendCallback(const dart_interfaces::msg::AimCommand::ConstShare
         }
         serial_port_->write(frame.data(), frame.size());
     } catch (const std::exception& error) {
-        RCLCPP_ERROR(get_logger(), "Serial send failed: %s", error.what());
+        RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), kErrorThrottleMs,
+                              "Serial send failed: %s", error.what());
         requestReconnect();
     }
 }
@@ -287,8 +296,9 @@ bool SerialNode::tryOpenPort() {
         return true;
     } catch (const std::exception& error) {
         connected_.store(false);
-        RCLCPP_WARN(get_logger(), "Unable to open serial device %s: %s",
-                    serial_config_.device.c_str(), error.what());
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), kReconnectReminderMs,
+                             "Unable to open serial device %s: %s", serial_config_.device.c_str(),
+                             error.what());
         return false;
     }
 }

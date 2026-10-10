@@ -16,6 +16,8 @@
 
 namespace dart_vision::aiming {
 namespace {
+constexpr int kWarningThrottleMs = 5000;
+
 bool validModelName(const std::string& name) {
     static const std::regex pattern{"[A-Za-z][A-Za-z0-9_]*"};
     return std::regex_match(name, pattern);
@@ -180,8 +182,8 @@ void AimingNode::onTarget(StereoTarget::ConstSharedPtr target) {
         tf2::doTransform(source, transformed, transform);
     } catch (const tf2::TransformException& error) {
         invalidate();
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "Aiming transform unavailable: %s",
-                             error.what());
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), kWarningThrottleMs,
+                             "Aiming transform unavailable: %s", error.what());
         return;
     }
     const auto& p = transformed.point;
