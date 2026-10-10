@@ -33,7 +33,9 @@ dart_serial ⇄ 控制器
 ```bash
 sudo apt update
 sudo apt install git-lfs clang-format clang-tidy \
-  python3-colcon-common-extensions python3-rosdep pipx
+  python3-colcon-common-extensions python3-rosdep pipx \
+  ros-jazzy-rosbag2 ros-jazzy-rosbag2-storage-mcap \
+  ros-jazzy-image-transport-plugins
 pipx install uv
 ```
 
@@ -130,6 +132,32 @@ ros2 launch dart_bringup lidar_debug.launch.py
 ```bash
 ros2 launch dart_bringup camera_system.launch.py --show-args
 ```
+
+### 数据录制
+
+项目使用 ROS 2 自带的 rosbag2 录制运行数据，配置统一保存在
+`src/dart_bringup/config/recording.yaml`。录制默认关闭；启用压缩图像和完整视觉链路记录：
+
+```bash
+ros2 launch dart_bringup vision_system.launch.py \
+  start_recording:=true \
+  recording_profile:=compressed
+```
+
+只记录低带宽状态、算法结果、诊断、日志和 TF：
+
+```bash
+ros2 launch dart_bringup recording.launch.py profile:=telemetry
+```
+
+每次录制默认保存在项目根目录的 `rosbag/dart_vision_YYYYMMDD_HHMMSS/`，其中 `bag/`
+保存 MCAP，`config/` 保存本次使用的运行配置副本，`manifest.yaml` 记录 profile、话题、Git
+版本和退出状态。左右压缩图像用于持续复盘，但有损压缩不适合作为严格的逐像素算法基准。
+`rosbag/` 已被 Git 忽略，也可通过 `DART_BAG_ROOT` 临时覆盖保存根目录。录制按 30 秒或
+4 GiB 中先达到的条件滚动分片；直接下电后，下一次启动录制器会隔离无法读取的分片并对
+其余 MCAP 自动执行 `ros2 bag reindex`。最后一个未完成分片仍可能丢失。录制阶段不会自动
+删除或压缩历史数据，应在运行前确认磁盘剩余空间；执行 `git clean -fdx` 或删除工作区也会
+删除被忽略的录包。
 
 ## ROS 包
 

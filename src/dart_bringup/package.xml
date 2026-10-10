@@ -17,6 +17,9 @@
   <exec_depend>dart_stereo</exec_depend>
   <exec_depend>dart_aiming</exec_depend>
   <exec_depend>livox_ros2_driver</exec_depend>
+  <exec_depend>image_transport_plugins</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>rosbag2</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
 
   <exec_depend>launch</exec_depend>

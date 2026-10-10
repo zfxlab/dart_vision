@@ -1,0 +1,51 @@
+recording:
+  default_profile: telemetry
+
+  output:
+    # 相对路径以 Git 仓库根目录为基准，便于直接在项目内管理和复盘。
+    root: rosbag
+
+  storage:
+    storage_id: mcap
+    # rosbag2 使用双缓冲，最坏情况下内存占用可达到此值的两倍。
+    max_cache_size_bytes: 67108864
+    # 将单个存储文件限制为 4 GiB，降低异常断电时最后一个文件的影响范围。
+    max_bag_size_bytes: 4294967296
+    # 定时关闭当前分片；直接下电时通常只损失最后一个未完成分片。
+    max_bag_duration_seconds: 30
+    compression_mode: none
+
+  # 每次录制时复制到 session/config，保留当时实际使用的运行配置。
+  snapshot_files:
+    - camera/calibration/00DA1923275.yaml
+    - camera/calibration/00DA1923281.yaml
+    - camera/cameras.yaml
+    - green_light_detector.yaml
+    - stereo_triangulator.yaml
+    - aiming.yaml
+    - serial.yaml
+
+  profiles:
+    telemetry:
+      topics:
+        - /left_camera/camera_info
+        - /right_camera/camera_info
+        - /left_camera/detection
+        - /right_camera/detection
+        - /left_camera/detection_filtered
+        - /right_camera/detection_filtered
+        - /stereo_target
+        - /controller_state
+        - /aim_command
+        - /joint_states
+        - /diagnostics
+        - /rosout
+        - /parameter_events
+        - /tf
+        - /tf_static
+
+    compressed:
+      include: telemetry
+      topics:
+        - /left_camera/image_raw/compressed
+        - /right_camera/image_raw/compressed
