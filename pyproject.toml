@@ -1,3 +1,26 @@
+[project]
+name = "dart-vision"
+version = "0.1.0"
+description = "ROS 2 vision system for the RoboMaster dart platform"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "ruff==0.16.7",
+]
+analysis = [
+    "ipykernel>=7.2.0",
+    "jupyterlab>=4.5.0",
+    "matplotlib>=3.10.0",
+    "numpy>=2.4.0",
+    "pandas>=3.0.0",
+]
+
+[tool.uv]
+package = false
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"

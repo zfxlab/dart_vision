@@ -283,12 +283,20 @@ ros2 topic echo /diagnostics
 Python 环境仅用于 launch 文件的格式与静态检查，不参与运行时算法：
 
 ```bash
-uv venv --python /usr/bin/python3
-uv pip sync requirements-uv.lock
-source .venv/bin/activate
-ruff format --check src
-ruff check src
+uv sync --python /usr/bin/python3
+uv run ruff format --check src
+uv run ruff check src
 ```
+
+Jupyter 数据分析工具位于 `analysis` 依赖组，不会随默认开发环境安装：
+
+```bash
+uv sync --python /usr/bin/python3 --group analysis
+uv run --group analysis jupyter lab analysis/notebooks/target_geometry_analysis.ipynb
+```
+
+Python 直接依赖统一声明在 `pyproject.toml`，完整解析版本由 `uv.lock` 锁定。修改依赖时使用
+`uv add --group dev <package>` 或 `uv add --group analysis <package>`，并提交同步更新的两个文件。
 
 C++ 格式和静态分析规则分别位于 `.clang-format` 和 `.clang-tidy`。
 
