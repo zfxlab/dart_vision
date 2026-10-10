@@ -17,6 +17,7 @@
 #include <string>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "dart_camera/bearing_solver.hpp"
 #include "dart_interfaces/msg/green_light_detection.hpp"
@@ -25,6 +26,25 @@ namespace dart_vision::camera {
 namespace {
 constexpr int kWarningThrottleMs = 5000;
 constexpr auto kDiagnosticsPeriod = std::chrono::seconds(1);
+constexpr std::size_t kLatencyWindowSize = 200;
+
+struct LatencySummary {
+    double average{};
+    double maximum{};
+    double p95{};
+};
+
+LatencySummary summarizeLatency(const std::deque<double>& samples) {
+    if (samples.empty())
+        return {};
+    std::vector<double> sorted(samples.begin(), samples.end());
+    std::sort(sorted.begin(), sorted.end());
+    double sum = 0.0;
+    for (const double sample : sorted)
+        sum += sample;
+    const std::size_t p95_index = (sorted.size() * 95U + 99U) / 100U - 1U;
+    return {sum / static_cast<double>(sorted.size()), sorted.back(), sorted[p95_index]};
+}
 
 rcl_interfaces::msg::SetParametersResult parameterFailure(const std::string& reason) {
     rcl_interfaces::msg::SetParametersResult result;
@@ -507,6 +527,8 @@ void GreenLightDetectorNode::processImage(
     const auto processing_end = std::chrono::steady_clock::now();
     const auto processing_time =
         std::chrono::duration_cast<std::chrono::nanoseconds>(processing_end - processing_start);
+    const double capture_to_detection_ms =
+        (now() - rclcpp::Time(image->header.stamp)).seconds() * 1000.0;
     std::lock_guard<std::mutex> lock(diagnostic_mutex_);
     auto& statistics = diagnostic_statistics_;
     ++statistics.processed_total;
@@ -515,6 +537,11 @@ void GreenLightDetectorNode::processImage(
     statistics.max_processing_time_interval =
         std::max(statistics.max_processing_time_interval, processing_time);
     statistics.last_processed_time = processing_end;
+    if (std::isfinite(capture_to_detection_ms) && capture_to_detection_ms >= 0.0) {
+        statistics.capture_to_detection_ms.push_back(capture_to_detection_ms);
+        if (statistics.capture_to_detection_ms.size() > kLatencyWindowSize)
+            statistics.capture_to_detection_ms.pop_front();
+    }
     switch (filtered_message.status) {
     case Detection::DETECTED:
         ++statistics.detected_total;
@@ -576,6 +603,7 @@ void GreenLightDetectorNode::publishDiagnostics() {
             : 0.0;
     const double max_processing_ms =
         std::chrono::duration<double, std::milli>(statistics.max_processing_time_interval).count();
+    const auto latency = summarizeLatency(statistics.capture_to_detection_ms);
     const double last_processed_age_seconds =
         statistics.last_processed_time == std::chrono::steady_clock::time_point{}
             ? -1.0
@@ -609,6 +637,11 @@ void GreenLightDetectorNode::publishDiagnostics() {
     status.values.push_back(
         keyValue("average_processing_ms", std::to_string(average_processing_ms)));
     status.values.push_back(keyValue("max_processing_ms", std::to_string(max_processing_ms)));
+    status.values.push_back(
+        keyValue("capture_to_detection_average_ms", std::to_string(latency.average)));
+    status.values.push_back(
+        keyValue("capture_to_detection_max_ms", std::to_string(latency.maximum)));
+    status.values.push_back(keyValue("capture_to_detection_p95_ms", std::to_string(latency.p95)));
     status.values.push_back(
         keyValue("last_processed_age_sec", std::to_string(last_processed_age_seconds)));
     status.values.push_back(keyValue("active_profile", active_profile));

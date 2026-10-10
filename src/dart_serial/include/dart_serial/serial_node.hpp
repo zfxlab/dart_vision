@@ -4,6 +4,8 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <deque>
+#include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <memory>
 #include <mutex>
 #include <rclcpp/publisher.hpp>
@@ -40,6 +42,7 @@ class SerialNode : public rclcpp::Node {
     void processBufferedFrames();
     void processFrame(const std::vector<std::uint8_t>& frame);
     void sendCallback(const dart_interfaces::msg::AimCommand::ConstSharedPtr& message);
+    void publishDiagnostics();
 
     [[nodiscard]] bool tryOpenPort();
     void closePort() noexcept;
@@ -61,14 +64,34 @@ class SerialNode : public rclcpp::Node {
     std::atomic_bool running_{false};
     std::atomic_bool connected_{false};
     std::atomic_bool reconnect_requested_{false};
+    std::atomic<std::uint64_t> receive_frames_total_{0};
+    std::atomic<std::uint64_t> logger_frames_total_{0};
+    std::atomic<std::uint64_t> sent_frames_total_{0};
+    std::atomic<std::uint64_t> crc_errors_total_{0};
+    std::atomic<std::uint64_t> unknown_headers_total_{0};
+    std::atomic<std::uint64_t> decode_errors_total_{0};
+    std::atomic<std::uint64_t> read_errors_total_{0};
+    std::atomic<std::uint64_t> send_errors_total_{0};
+    std::atomic<std::uint64_t> reconnect_attempts_total_{0};
+    std::atomic<std::int64_t> last_receive_steady_ns_{0};
+    std::atomic<std::int64_t> last_write_steady_ns_{0};
     std::thread receive_thread_;
 
     // write() 可与 read() 并行；该锁只避免 write() 与 close()/open() 同时操作描述符。
     std::mutex port_lifecycle_mutex_;
+    std::mutex diagnostic_mutex_;
+    std::deque<double> measurement_to_serial_write_ms_;
+    std::chrono::steady_clock::time_point previous_diagnostic_time_;
+    std::uint64_t previous_receive_frames_{};
+    std::uint64_t previous_sent_frames_{};
+    std::uint64_t previous_read_errors_{};
+    std::uint64_t previous_send_errors_{};
 
     rclcpp::Subscription<dart_interfaces::msg::AimCommand>::SharedPtr send_subscription_;
     rclcpp::Publisher<dart_interfaces::msg::ControllerState>::SharedPtr receive_publisher_;
     rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_publisher_;
+    rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diagnostics_publisher_;
+    rclcpp::TimerBase::SharedPtr diagnostics_timer_;
 };
 
 } // namespace dart_vision::serial

@@ -49,6 +49,7 @@ class GreenLightDetectorNode : public rclcpp::Node {
         std::chrono::nanoseconds processing_time_interval{};
         std::chrono::nanoseconds max_processing_time_interval{};
         std::chrono::steady_clock::time_point last_processed_time{};
+        std::deque<double> capture_to_detection_ms;
     };
 
     struct DetectorProfile {

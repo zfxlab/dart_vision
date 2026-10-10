@@ -1,12 +1,16 @@
 #include "dart_serial/serial_node.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
+#include <diagnostic_msgs/msg/diagnostic_status.hpp>
+#include <diagnostic_msgs/msg/key_value.hpp>
 #include <functional>
 #include <iomanip>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
+#include <vector>
 
 #include "dart_serial/crc.hpp"
 #include "dart_serial/packet.hpp"
@@ -18,6 +22,39 @@ constexpr int kWarningThrottleMs = 5000;
 constexpr int kErrorThrottleMs = 5000;
 constexpr int kReconnectReminderMs = 10000;
 constexpr int kControllerDebugThrottleMs = 2000;
+constexpr auto kDiagnosticsPeriod = std::chrono::seconds(1);
+constexpr std::size_t kLatencyWindowSize = 200;
+
+diagnostic_msgs::msg::KeyValue keyValue(const std::string& key, const std::string& value) {
+    diagnostic_msgs::msg::KeyValue result;
+    result.key = key;
+    result.value = value;
+    return result;
+}
+
+std::int64_t steadyNowNanoseconds() {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+
+struct LatencySummary {
+    double average{};
+    double maximum{};
+    double p95{};
+};
+
+LatencySummary summarizeLatency(const std::deque<double>& samples) {
+    if (samples.empty())
+        return {};
+    std::vector<double> sorted(samples.begin(), samples.end());
+    std::sort(sorted.begin(), sorted.end());
+    double sum = 0.0;
+    for (const double sample : sorted)
+        sum += sample;
+    const std::size_t p95_index = (sorted.size() * 95U + 99U) / 100U - 1U;
+    return {sum / static_cast<double>(sorted.size()), sorted.back(), sorted[p95_index]};
+}
 
 std::string bytesToHex(const std::vector<std::uint8_t>& bytes) {
     std::ostringstream stream;
@@ -33,7 +70,8 @@ std::string bytesToHex(const std::vector<std::uint8_t>& bytes) {
 
 } // namespace
 
-SerialNode::SerialNode(const rclcpp::NodeOptions& options) : Node("serial_node", options) {
+SerialNode::SerialNode(const rclcpp::NodeOptions& options)
+    : Node("serial_node", options), previous_diagnostic_time_(std::chrono::steady_clock::now()) {
     declareParameters();
     serial_config_ = readSerialConfig();
 
@@ -57,6 +95,10 @@ SerialNode::SerialNode(const rclcpp::NodeOptions& options) : Node("serial_node",
         receive_topic_, rclcpp::SensorDataQoS());
     joint_state_publisher_ =
         create_publisher<sensor_msgs::msg::JointState>(joint_state_topic_, rclcpp::SensorDataQoS());
+    diagnostics_publisher_ =
+        create_publisher<diagnostic_msgs::msg::DiagnosticArray>("/diagnostics", rclcpp::QoS(10));
+    diagnostics_timer_ =
+        create_wall_timer(kDiagnosticsPeriod, std::bind(&SerialNode::publishDiagnostics, this));
     send_subscription_ = create_subscription<dart_interfaces::msg::AimCommand>(
         send_topic_, rclcpp::SensorDataQoS(),
         std::bind(&SerialNode::sendCallback, this, std::placeholders::_1));
@@ -151,6 +193,7 @@ void SerialNode::receiveLoop() {
             packet_parser_.append(read_buffer.data(), bytes_read);
             processBufferedFrames();
         } catch (const std::exception& error) {
+            ++read_errors_total_;
             RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), kErrorThrottleMs,
                                   "Serial receive failed: %s", error.what());
             requestReconnect();
@@ -169,6 +212,7 @@ void SerialNode::processBufferedFrames() {
             processFrame(result.frame);
             break;
         case ParseStatus::kCRCError: {
+            ++crc_errors_total_;
             const auto expected =
                 calculateCRC16(result.frame.data(), result.frame.size() - sizeof(std::uint16_t));
             const auto received =
@@ -183,6 +227,7 @@ void SerialNode::processBufferedFrames() {
             break;
         }
         case ParseStatus::kUnknownHeader: {
+            ++unknown_headers_total_;
             const auto discarded_hex = bytesToHex(result.frame);
             RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), kProtocolWarningThrottleMs,
                                  "Discarded %zu byte(s) before a valid incoming header: [%s]",
@@ -197,10 +242,13 @@ void SerialNode::processFrame(const std::vector<std::uint8_t>& frame) {
     if (!frame.empty() && packetTypeFromHeader(frame.front()) == PacketType::kLogger) {
         const auto packet = decodeLoggerPacket(frame);
         if (!packet.has_value()) {
+            ++decode_errors_total_;
             RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), kProtocolWarningThrottleMs,
                                  "A parser-approved logger frame failed packet decoding");
             return;
         }
+        ++logger_frames_total_;
+        last_receive_steady_ns_.store(steadyNowNanoseconds());
 
         RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), kControllerDebugThrottleMs,
                               "Controller logger: state=%u prepare=%u station=%u fire_finished=%u "
@@ -223,6 +271,7 @@ void SerialNode::processFrame(const std::vector<std::uint8_t>& frame) {
 
     const auto packet = decodeReceivePacket(frame);
     if (!packet.has_value()) {
+        ++decode_errors_total_;
         RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), kProtocolWarningThrottleMs,
                              "A parser-approved receive frame failed packet decoding");
         return;
@@ -230,6 +279,8 @@ void SerialNode::processFrame(const std::vector<std::uint8_t>& frame) {
 
     if (!std::isfinite(packet->launcher_yaw_rad) || !std::isfinite(packet->dart_offset_rad))
         return;
+    ++receive_frames_total_;
+    last_receive_steady_ns_.store(steadyNowNanoseconds());
     const rclcpp::Time stamp = now();
 
     dart_interfaces::msg::ControllerState message;
@@ -280,7 +331,21 @@ void SerialNode::sendCallback(const dart_interfaces::msg::AimCommand::ConstShare
             return;
         }
         serial_port_->write(frame.data(), frame.size());
+        ++sent_frames_total_;
+        last_write_steady_ns_.store(steadyNowNanoseconds());
+        if ((packet.state == Command::VALID || packet.state == Command::CLOSED) &&
+            (message->header.stamp.sec != 0 || message->header.stamp.nanosec != 0)) {
+            const double latency_ms =
+                (now() - rclcpp::Time(message->header.stamp)).seconds() * 1000.0;
+            if (std::isfinite(latency_ms) && latency_ms >= 0.0) {
+                std::lock_guard<std::mutex> diagnostic_lock(diagnostic_mutex_);
+                measurement_to_serial_write_ms_.push_back(latency_ms);
+                if (measurement_to_serial_write_ms_.size() > kLatencyWindowSize)
+                    measurement_to_serial_write_ms_.pop_front();
+            }
+        }
     } catch (const std::exception& error) {
+        ++send_errors_total_;
         RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), kErrorThrottleMs,
                               "Serial send failed: %s", error.what());
         requestReconnect();
@@ -288,6 +353,7 @@ void SerialNode::sendCallback(const dart_interfaces::msg::AimCommand::ConstShare
 }
 
 bool SerialNode::tryOpenPort() {
+    ++reconnect_attempts_total_;
     try {
         std::lock_guard<std::mutex> lock(port_lifecycle_mutex_);
         serial_port_->open();
@@ -301,6 +367,87 @@ bool SerialNode::tryOpenPort() {
                              error.what());
         return false;
     }
+}
+
+void SerialNode::publishDiagnostics() {
+    const auto current_time = std::chrono::steady_clock::now();
+    const double interval_seconds =
+        std::chrono::duration<double>(current_time - previous_diagnostic_time_).count();
+    previous_diagnostic_time_ = current_time;
+
+    const auto receive_frames = receive_frames_total_.load();
+    const auto sent_frames = sent_frames_total_.load();
+    const auto read_errors = read_errors_total_.load();
+    const auto send_errors = send_errors_total_.load();
+    const auto rate = [interval_seconds](const std::uint64_t current,
+                                         const std::uint64_t previous) {
+        return interval_seconds > 0.0 ? static_cast<double>(current - previous) / interval_seconds
+                                      : 0.0;
+    };
+    const double receive_fps = rate(receive_frames, previous_receive_frames_);
+    const double send_fps = rate(sent_frames, previous_sent_frames_);
+    const bool errors_in_interval =
+        read_errors > previous_read_errors_ || send_errors > previous_send_errors_;
+    previous_receive_frames_ = receive_frames;
+    previous_sent_frames_ = sent_frames;
+    previous_read_errors_ = read_errors;
+    previous_send_errors_ = send_errors;
+
+    LatencySummary latency;
+    {
+        std::lock_guard<std::mutex> lock(diagnostic_mutex_);
+        latency = summarizeLatency(measurement_to_serial_write_ms_);
+    }
+    const auto current_steady_ns = steadyNowNanoseconds();
+    const auto last_receive_ns = last_receive_steady_ns_.load();
+    const auto last_write_ns = last_write_steady_ns_.load();
+    const double last_receive_age =
+        last_receive_ns == 0 ? -1.0
+                             : static_cast<double>(current_steady_ns - last_receive_ns) / 1.0e9;
+    const double last_write_age =
+        last_write_ns == 0 ? -1.0 : static_cast<double>(current_steady_ns - last_write_ns) / 1.0e9;
+
+    diagnostic_msgs::msg::DiagnosticArray message;
+    message.header.stamp = now();
+    diagnostic_msgs::msg::DiagnosticStatus status;
+    status.name = std::string(get_fully_qualified_name()) + ": serial";
+    status.hardware_id = serial_config_.device;
+    if (!connected_.load()) {
+        status.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+        status.message = "disconnected";
+    } else if (errors_in_interval) {
+        status.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+        status.message = "communication errors";
+    } else {
+        status.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+        status.message = "connected";
+    }
+    status.values.push_back(keyValue("connected", connected_.load() ? "true" : "false"));
+    status.values.push_back(keyValue("receive_fps", std::to_string(receive_fps)));
+    status.values.push_back(keyValue("send_fps", std::to_string(send_fps)));
+    status.values.push_back(keyValue("last_receive_age_sec", std::to_string(last_receive_age)));
+    status.values.push_back(keyValue("last_write_age_sec", std::to_string(last_write_age)));
+    status.values.push_back(
+        keyValue("measurement_to_serial_write_average_ms", std::to_string(latency.average)));
+    status.values.push_back(
+        keyValue("measurement_to_serial_write_max_ms", std::to_string(latency.maximum)));
+    status.values.push_back(
+        keyValue("measurement_to_serial_write_p95_ms", std::to_string(latency.p95)));
+    status.values.push_back(keyValue("receive_frames_total", std::to_string(receive_frames)));
+    status.values.push_back(
+        keyValue("logger_frames_total", std::to_string(logger_frames_total_.load())));
+    status.values.push_back(keyValue("sent_frames_total", std::to_string(sent_frames)));
+    status.values.push_back(keyValue("crc_errors_total", std::to_string(crc_errors_total_.load())));
+    status.values.push_back(
+        keyValue("unknown_headers_total", std::to_string(unknown_headers_total_.load())));
+    status.values.push_back(
+        keyValue("decode_errors_total", std::to_string(decode_errors_total_.load())));
+    status.values.push_back(keyValue("read_errors_total", std::to_string(read_errors)));
+    status.values.push_back(keyValue("send_errors_total", std::to_string(send_errors)));
+    status.values.push_back(
+        keyValue("reconnect_attempts_total", std::to_string(reconnect_attempts_total_.load())));
+    message.status.push_back(std::move(status));
+    diagnostics_publisher_->publish(message);
 }
 
 void SerialNode::closePort() noexcept {

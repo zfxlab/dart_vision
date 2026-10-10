@@ -13,6 +13,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(dart_interfaces REQUIRED)
+find_package(diagnostic_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 
 add_library(
@@ -41,7 +42,7 @@ target_include_directories(
 )
 
 target_link_libraries(serial_node serial_core)
-ament_target_dependencies(serial_node rclcpp dart_interfaces sensor_msgs)
+ament_target_dependencies(serial_node rclcpp dart_interfaces diagnostic_msgs sensor_msgs)
 
 install(
   TARGETS serial_core serial_node

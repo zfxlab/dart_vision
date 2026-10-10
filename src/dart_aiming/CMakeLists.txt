@@ -11,6 +11,7 @@ find_package(builtin_interfaces REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rcl_interfaces REQUIRED)
 find_package(dart_interfaces REQUIRED)
+find_package(diagnostic_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
@@ -26,6 +27,7 @@ ament_target_dependencies(
   rclcpp
   rcl_interfaces
   dart_interfaces
+  diagnostic_msgs
   geometry_msgs
   tf2
   tf2_ros
