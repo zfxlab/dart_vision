@@ -16,10 +16,7 @@ struct Aim {
 /// 输入坐标为 x 前、y 左、z 上；距离只计算 XY 水平分量，偏转角向左为正。
 [[nodiscard]] std::optional<Aim> solve(double x, double y, double z) noexcept;
 
-/// 对几何解应用离线拟合得到的残差补偿；当前为恒等映射，拟合确定后在实现中填写公式。
-[[nodiscard]] std::optional<Aim> applyFittedCorrection(const Aim& input) noexcept;
-
-/// 在拟合完成后加入控制器给出的飞镖固定偏角。
+/// 加入控制器给出的飞镖固定偏角。
 [[nodiscard]] std::optional<Aim> applyDartOffset(const Aim& input, double offset_rad) noexcept;
 
 /// 对新的有效距离取滑动平均；窗口填满前不返回输出。

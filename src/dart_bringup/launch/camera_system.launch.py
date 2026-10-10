@@ -21,18 +21,14 @@ def generate_launch_description():
 
     bringup_share = FindPackageShare("dart_bringup")
     config_directory = PathJoinSubstitution([bringup_share, "config"])
-    default_cameras_file = PathJoinSubstitution(
-        [config_directory, "camera", "cameras.yaml"]
-    )
+    default_cameras_file = PathJoinSubstitution([config_directory, "camera", "cameras.yaml"])
     default_detector_params_file = PathJoinSubstitution(
         [config_directory, "green_light_detector.yaml"]
     )
     default_stereo_params_file = PathJoinSubstitution(
         [config_directory, "stereo_triangulator.yaml"]
     )
-    default_site_file = PathJoinSubstitution(
-        [config_directory, "site", "default.yaml"]
-    )
+    default_site_file = PathJoinSubstitution([config_directory, "site", "default.yaml"])
 
     description_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(

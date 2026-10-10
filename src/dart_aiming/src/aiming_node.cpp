@@ -150,12 +150,7 @@ void AimingNode::onTarget(StereoTarget::ConstSharedPtr target) {
     Aim averaged_aim = *geometric_aim;
     if (mean_distance)
         averaged_aim.distance_m = *mean_distance;
-    const auto fitted_aim = applyFittedCorrection(averaged_aim);
-    if (!fitted_aim) {
-        invalidate();
-        return;
-    }
-    const auto final_aim = applyDartOffset(*fitted_aim, controller_->dart_offset_rad);
+    const auto final_aim = applyDartOffset(averaged_aim, controller_->dart_offset_rad);
     if (!final_aim || final_aim->distance_m > std::numeric_limits<float>::max()) {
         invalidate();
         return;
