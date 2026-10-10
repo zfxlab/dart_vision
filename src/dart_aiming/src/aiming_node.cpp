@@ -1,16 +1,33 @@
 #include "dart_aiming/aiming_node.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <functional>
 #include <geometry_msgs/msg/point_stamped.hpp>
 #include <limits>
 #include <rcl_interfaces/msg/parameter_descriptor.hpp>
 #include <rclcpp/create_timer.hpp>
+#include <regex>
 #include <stdexcept>
+#include <string>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <unordered_set>
 
 namespace dart_vision::aiming {
+namespace {
+bool validModelName(const std::string& name) {
+    static const std::regex pattern{"[A-Za-z][A-Za-z0-9_]*"};
+    return std::regex_match(name, pattern);
+}
+
+QuadraticAimModel::Coefficients coefficientsFromParameter(const std::vector<double>& values,
+                                                          const std::string& parameter_name) {
+    if (values.size() != 3U)
+        throw std::invalid_argument(parameter_name + " must contain exactly [a, b, c]");
+    return {values[0], values[1], values[2]};
+}
+} // namespace
 
 AimingNode::AimingNode(const rclcpp::NodeOptions& options) : Node("aiming", options) {
     rcl_interfaces::msg::ParameterDescriptor read_only;
@@ -33,11 +50,49 @@ AimingNode::AimingNode(const rclcpp::NodeOptions& options) : Node("aiming", opti
     const double distance_step = declare_parameter<double>("max_distance_step_m", 0.3, read_only);
     supported_target_modes_ = declare_parameter<std::vector<std::int64_t>>("supported_target_modes",
                                                                            {1, 2, 3, 4}, read_only);
+    const auto fitting_model_names = declare_parameter<std::vector<std::string>>(
+        "fitting.model_names", std::vector<std::string>{}, read_only);
     const auto positive = [](double v) { return std::isfinite(v) && v > 0.0; };
     if (reference_frame_.empty() || stereo_topic.empty() || controller_topic.empty() ||
         command_topic.empty() || !positive(target_timeout_s_) || !positive(controller_timeout_s_) ||
         !positive(max_height_gap_m_))
         throw std::invalid_argument("Invalid aiming node configuration");
+
+    const std::unordered_set<std::int64_t> supported_modes(supported_target_modes_.begin(),
+                                                           supported_target_modes_.end());
+    if (supported_modes.size() != supported_target_modes_.size() ||
+        std::any_of(supported_target_modes_.begin(), supported_target_modes_.end(),
+                    [](const std::int64_t mode) { return mode < 0 || mode > 255; }))
+        throw std::invalid_argument("supported_target_modes must contain unique uint8 values");
+
+    std::unordered_set<std::string> loaded_model_names;
+    for (const auto& model_name : fitting_model_names) {
+        if (!validModelName(model_name) || !loaded_model_names.insert(model_name).second)
+            throw std::invalid_argument("Invalid or duplicate fitting model name: " + model_name);
+        const std::string prefix = "fitting.models." + model_name + ".";
+        const auto modes = declare_parameter<std::vector<std::int64_t>>(
+            prefix + "modes", std::vector<std::int64_t>{}, read_only);
+        const auto yaw_coefficients =
+            coefficientsFromParameter(declare_parameter<std::vector<double>>(
+                                          prefix + "yaw_coefficients", {0.0, 1.0, 0.0}, read_only),
+                                      prefix + "yaw_coefficients");
+        const auto distance_coefficients = coefficientsFromParameter(
+            declare_parameter<std::vector<double>>(prefix + "distance_coefficients",
+                                                   {0.0, 1.0, 0.0}, read_only),
+            prefix + "distance_coefficients");
+        if (modes.empty())
+            throw std::invalid_argument("Fitting model has no target modes: " + model_name);
+        const QuadraticAimModel model(yaw_coefficients, distance_coefficients);
+        std::unordered_set<std::int64_t> model_modes;
+        for (const auto mode : modes) {
+            if (!supported_modes.count(mode) || !model_modes.insert(mode).second)
+                throw std::invalid_argument("Invalid or duplicate target mode in model: " +
+                                            model_name);
+            if (!fitting_models_.emplace(static_cast<std::uint8_t>(mode), model).second)
+                throw std::invalid_argument("Target mode belongs to multiple fitting models: " +
+                                            std::to_string(mode));
+        }
+    }
     stability_ = std::make_unique<Stability>(frames, yaw_step, distance_step);
     distance_average_ = std::make_unique<DistanceMovingAverage>(average_frames);
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
@@ -150,7 +205,15 @@ void AimingNode::onTarget(StereoTarget::ConstSharedPtr target) {
     Aim averaged_aim = *geometric_aim;
     if (mean_distance)
         averaged_aim.distance_m = *mean_distance;
-    const auto final_aim = applyDartOffset(averaged_aim, controller_->dart_offset_rad);
+    std::optional<Aim> modeled_aim = averaged_aim;
+    const auto model = fitting_models_.find(controller_->target_mode);
+    if (model != fitting_models_.end())
+        modeled_aim = model->second.apply(averaged_aim);
+    if (!modeled_aim) {
+        invalidate();
+        return;
+    }
+    const auto final_aim = applyDartOffset(*modeled_aim, controller_->dart_offset_rad);
     if (!final_aim || final_aim->distance_m > std::numeric_limits<float>::max()) {
         invalidate();
         return;

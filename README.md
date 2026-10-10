@@ -158,10 +158,14 @@ ros2 launch dart_bringup camera_system.launch.py --show-args
 | `camera/calibration/*.yaml` | 各相机内参和畸变参数 |
 | `green_light_detector.yaml` | 颜色分割、几何、亮度和掩膜清理参数 |
 | `stereo_triangulator.yaml` | 左右话题、配对时差和双目几何限制 |
-| `aiming.yaml` | 超时、距离平滑、连续帧确认和支持的目标模式 |
+| `aiming.yaml` | 超时、距离平滑、连续帧确认、目标模式及二次函数拟合模型 |
 | `serial.yaml` | 串口设备、波特率、话题和电机角度校正 |
 | `site/default.yaml` | 红蓝方选择及场地坐标修正 |
 | `lidar/` | Livox 驱动与设备配置 |
+
+`aiming.yaml` 中的 `fitting.models` 可配置多个模型，并通过 `modes` 选择适用的目标模式。
+`yaw_coefficients` 和 `distance_coefficients` 均按 `[a, b, c]` 配置，直接输出
+`a*x^2 + b*x + c`；yaw 使用几何 yaw 作为输入，distance 使用平滑后的几何距离作为输入。
 
 当前相机清单将 `00DA1923275` 配置为左相机，将 `00DA1923281` 配置为右相机。
 部署前必须确认实机序列号、左右安装位置和对应标定文件一致。
