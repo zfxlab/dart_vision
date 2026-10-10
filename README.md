@@ -156,7 +156,7 @@ ros2 launch dart_bringup camera_system.launch.py --show-args
 | --- | --- |
 | `camera/cameras.yaml` | 相机启用状态、序列号、曝光、帧率及标定文件引用 |
 | `camera/calibration/*.yaml` | 各相机内参和畸变参数 |
-| `green_light_detector.yaml` | 颜色分割、几何、亮度和掩膜清理参数 |
+| `green_light_detector.yaml` | 按目标模式切换的颜色分割、几何、亮度和掩膜清理参数 |
 | `stereo_triangulator.yaml` | 左右话题、配对时差和双目几何限制 |
 | `aiming.yaml` | 超时、距离平滑、目标模式及二次函数拟合模型 |
 | `serial.yaml` | 串口设备、波特率、话题和电机角度校正 |
@@ -166,6 +166,10 @@ ros2 launch dart_bringup camera_system.launch.py --show-args
 `aiming.yaml` 中的 `fitting.models` 可配置多个模型，并通过 `modes` 选择适用的目标模式。
 `yaw_coefficients` 和 `distance_coefficients` 均按 `[a, b, c]` 配置，直接输出
 `a*x^2 + b*x + c`；yaw 使用几何 yaw 作为输入，distance 使用平滑后的几何距离作为输入。
+
+`green_light_detector.yaml` 中的 `profiles` 将识别参数映射到控制器 `target_mode`：`outpost`
+用于模式 `0`，`base` 用于模式 `1` 至 `4`。左右检测节点会订阅 `/controller_state` 并自动
+切换 profile；未收到受支持的模式前不执行识别。
 
 当前相机清单将 `00DA1923275` 配置为左相机，将 `00DA1923281` 配置为右相机。
 部署前必须确认实机序列号、左右安装位置和对应标定文件一致。

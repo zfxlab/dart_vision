@@ -3,29 +3,58 @@
     image_topic: image_raw
     detection_topic: detection
     camera_info_topic: camera_info
-    ambiguity_margin: 0.05
+    controller_topic: /controller_state
 
-    segmentation:
-      min_hue: 35.0
-      max_hue: 95.0
-      min_saturation: 45.0
-      min_value: 100.0
-      min_green_excess: 25.0
+    # target_mode=0 使用前哨站配置，其他现有模式使用基地配置。
+    # 两套参数当前保持一致，可在完成前哨站采样后分别调整。
+    profiles:
+      names: [outpost, base]
+      outpost:
+        modes: [0]
+        ambiguity_margin: 0.05
+        segmentation:
+          min_hue: 35.0
+          max_hue: 95.0
+          min_saturation: 45.0
+          min_value: 100.0
+          min_green_excess: 25.0
+        geometry:
+          min_radius_px: 13.0
+          max_radius_px: 19.0
+          min_circularity: 0.7
+          max_aspect_ratio: 1.55
+          min_fill_ratio: 0.45
+        photometry:
+          min_inner_brightness: 100.0
+          min_contrast_ratio: 1.5
+        mask_cleanup:
+          close_kernel_size: 3
+          close_iterations: 1
+          open_kernel_size: 0
+          open_iterations: 1
+          fill_holes: true
 
-    geometry:
-      min_radius_px: 13.0
-      max_radius_px: 19.0
-      min_circularity: 0.7
-      max_aspect_ratio: 1.55
-      min_fill_ratio: 0.45
-
-    photometry:
-      min_inner_brightness: 100.0
-      min_contrast_ratio: 1.5
-
-    mask_cleanup:
-      close_kernel_size: 3
-      close_iterations: 1
-      open_kernel_size: 0
-      open_iterations: 1
-      fill_holes: true
+      base:
+        modes: [1, 2, 3, 4]
+        ambiguity_margin: 0.05
+        segmentation:
+          min_hue: 35.0
+          max_hue: 95.0
+          min_saturation: 45.0
+          min_value: 100.0
+          min_green_excess: 25.0
+        geometry:
+          min_radius_px: 13.0
+          max_radius_px: 19.0
+          min_circularity: 0.7
+          max_aspect_ratio: 1.55
+          min_fill_ratio: 0.45
+        photometry:
+          min_inner_brightness: 100.0
+          min_contrast_ratio: 1.5
+        mask_cleanup:
+          close_kernel_size: 3
+          close_iterations: 1
+          open_kernel_size: 0
+          open_iterations: 1
+          fill_holes: true

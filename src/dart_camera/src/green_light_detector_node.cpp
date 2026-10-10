@@ -8,11 +8,14 @@
 #include <diagnostic_msgs/msg/key_value.hpp>
 #include <functional>
 #include <geometry_msgs/msg/vector3.hpp>
+#include <limits>
 #include <opencv2/core.hpp>
 #include <rcl_interfaces/msg/parameter_descriptor.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
+#include <regex>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 #include <utility>
 
 #include "dart_camera/bearing_solver.hpp"
@@ -33,17 +36,27 @@ diagnostic_msgs::msg::KeyValue keyValue(const std::string& key, const std::strin
     result.value = value;
     return result;
 }
+
+bool validProfileName(const std::string& name) {
+    static const std::regex pattern{"[A-Za-z][A-Za-z0-9_]*"};
+    return std::regex_match(name, pattern);
+}
+
+bool validAmbiguityMargin(const double value) {
+    return std::isfinite(value) && value >= 0.0 && value <= 1.0;
+}
+
+bool endsWith(const std::string& value, const std::string& suffix) {
+    return value.size() >= suffix.size() &&
+           value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
 } // namespace
 
 GreenLightDetectorNode::GreenLightDetectorNode(const rclcpp::NodeOptions& options)
     : Node("green_light_detector", options),
       previous_diagnostic_time_(std::chrono::steady_clock::now()) {
     declareParameters();
-    green_light_detector_config_ = readGreenLightDetectorConfig();
-    if (!green_light_detector_config_.isConfigValid()) {
-        throw std::invalid_argument("Initial green-light detector parameters are invalid");
-    }
-    green_light_detector_ = std::make_shared<GreenLightDetector>(green_light_detector_config_);
+    loadProfiles();
 
     image_topic_ = get_parameter("image_topic").as_string();
     detection_topic_ = get_parameter("detection_topic").as_string();
@@ -62,6 +75,9 @@ GreenLightDetectorNode::GreenLightDetectorNode(const rclcpp::NodeOptions& option
         });
     camera_info_timer_ =
         create_wall_timer(std::chrono::milliseconds(20), [this] { processPendingImages(); });
+    controller_subscription_ = create_subscription<dart_interfaces::msg::ControllerState>(
+        get_parameter("controller_topic").as_string(), rclcpp::SensorDataQoS(),
+        std::bind(&GreenLightDetectorNode::controllerCallback, this, std::placeholders::_1));
     image_subscription_ = create_subscription<sensor_msgs::msg::Image>(
         image_topic_, rclcpp::SensorDataQoS(),
         std::bind(&GreenLightDetectorNode::imageCallback, this, std::placeholders::_1));
@@ -69,8 +85,9 @@ GreenLightDetectorNode::GreenLightDetectorNode(const rclcpp::NodeOptions& option
         std::bind(&GreenLightDetectorNode::onParametersChanged, this, std::placeholders::_1));
 
     RCLCPP_INFO(get_logger(),
-                "Green-light detector listening on '%s', publishing observations on '%s'",
-                image_topic_.c_str(), detection_topic_.c_str());
+                "Green-light detector listening on '%s', publishing observations on '%s' with "
+                "%zu target profiles",
+                image_topic_.c_str(), detection_topic_.c_str(), profiles_.size());
 }
 
 void GreenLightDetectorNode::declareParameters() {
@@ -82,136 +99,216 @@ void GreenLightDetectorNode::declareParameters() {
     declare_parameter<std::string>("image_topic", "image_raw", read_only);
     declare_parameter<std::string>("detection_topic", "detection", read_only);
     declare_parameter<std::string>("camera_info_topic", "camera_info", read_only);
-    declare_parameter<double>("ambiguity_margin", 0.05, read_only);
-
-    declare_parameter<double>("segmentation.min_hue", defaults.min_hue);
-    declare_parameter<double>("segmentation.max_hue", defaults.max_hue);
-    declare_parameter<double>("segmentation.min_saturation", defaults.min_saturation);
-    declare_parameter<double>("segmentation.min_value", defaults.min_value);
-    declare_parameter<double>("segmentation.min_green_excess", defaults.min_green_excess);
-
-    declare_parameter<double>("geometry.min_radius_px", defaults.min_radius_px);
-    declare_parameter<double>("geometry.max_radius_px", defaults.max_radius_px);
-    declare_parameter<double>("geometry.min_circularity", defaults.min_circularity);
-    declare_parameter<double>("geometry.max_aspect_ratio", defaults.max_aspect_ratio);
-    declare_parameter<double>("geometry.min_fill_ratio", defaults.min_fill_ratio);
-
-    declare_parameter<double>("photometry.min_inner_brightness", defaults.min_inner_brightness);
-    declare_parameter<double>("photometry.min_contrast_ratio", defaults.min_contrast_ratio);
-
-    declare_parameter<int>("mask_cleanup.close_kernel_size", defaults.cleanup.close_kernel_size);
-    declare_parameter<int>("mask_cleanup.close_iterations", defaults.cleanup.close_iterations);
-    declare_parameter<int>("mask_cleanup.open_kernel_size", defaults.cleanup.open_kernel_size);
-    declare_parameter<int>("mask_cleanup.open_iterations", defaults.cleanup.open_iterations);
-    declare_parameter<bool>("mask_cleanup.fill_holes", defaults.cleanup.fill_holes);
+    declare_parameter<std::string>("controller_topic", "/controller_state", read_only);
+    const auto profile_names = declare_parameter<std::vector<std::string>>(
+        "profiles.names", std::vector<std::string>{"default"}, read_only);
+    if (profile_names.empty())
+        throw std::invalid_argument("At least one detector profile is required");
+    std::unordered_set<std::string> declared_names;
+    for (const auto& profile_name : profile_names) {
+        if (!validProfileName(profile_name) || !declared_names.insert(profile_name).second)
+            throw std::invalid_argument("Invalid or duplicate detector profile name: " +
+                                        profile_name);
+        const std::string prefix = "profiles." + profile_name + ".";
+        const std::vector<std::int64_t> default_modes =
+            profile_name == "default" ? std::vector<std::int64_t>{0, 1, 2, 3, 4}
+                                      : std::vector<std::int64_t>{};
+        declare_parameter<std::vector<std::int64_t>>(prefix + "modes", default_modes, read_only);
+        declare_parameter<double>(prefix + "ambiguity_margin", 0.05);
+        declare_parameter<double>(prefix + "segmentation.min_hue", defaults.min_hue);
+        declare_parameter<double>(prefix + "segmentation.max_hue", defaults.max_hue);
+        declare_parameter<double>(prefix + "segmentation.min_saturation", defaults.min_saturation);
+        declare_parameter<double>(prefix + "segmentation.min_value", defaults.min_value);
+        declare_parameter<double>(prefix + "segmentation.min_green_excess",
+                                  defaults.min_green_excess);
+        declare_parameter<double>(prefix + "geometry.min_radius_px", defaults.min_radius_px);
+        declare_parameter<double>(prefix + "geometry.max_radius_px", defaults.max_radius_px);
+        declare_parameter<double>(prefix + "geometry.min_circularity", defaults.min_circularity);
+        declare_parameter<double>(prefix + "geometry.max_aspect_ratio", defaults.max_aspect_ratio);
+        declare_parameter<double>(prefix + "geometry.min_fill_ratio", defaults.min_fill_ratio);
+        declare_parameter<double>(prefix + "photometry.min_inner_brightness",
+                                  defaults.min_inner_brightness);
+        declare_parameter<double>(prefix + "photometry.min_contrast_ratio",
+                                  defaults.min_contrast_ratio);
+        declare_parameter<int>(prefix + "mask_cleanup.close_kernel_size",
+                               defaults.cleanup.close_kernel_size);
+        declare_parameter<int>(prefix + "mask_cleanup.close_iterations",
+                               defaults.cleanup.close_iterations);
+        declare_parameter<int>(prefix + "mask_cleanup.open_kernel_size",
+                               defaults.cleanup.open_kernel_size);
+        declare_parameter<int>(prefix + "mask_cleanup.open_iterations",
+                               defaults.cleanup.open_iterations);
+        declare_parameter<bool>(prefix + "mask_cleanup.fill_holes", defaults.cleanup.fill_holes);
+    }
 }
 
-GreenLightDetectorConfig GreenLightDetectorNode::readGreenLightDetectorConfig() const {
+GreenLightDetectorConfig
+GreenLightDetectorNode::readGreenLightDetectorConfig(const std::string& prefix) const {
     GreenLightDetectorConfig config;
-    config.min_hue = get_parameter("segmentation.min_hue").as_double();
-    config.max_hue = get_parameter("segmentation.max_hue").as_double();
-    config.min_saturation = get_parameter("segmentation.min_saturation").as_double();
-    config.min_value = get_parameter("segmentation.min_value").as_double();
-    config.min_green_excess = get_parameter("segmentation.min_green_excess").as_double();
-    config.min_radius_px = get_parameter("geometry.min_radius_px").as_double();
-    config.max_radius_px = get_parameter("geometry.max_radius_px").as_double();
-    config.min_circularity = get_parameter("geometry.min_circularity").as_double();
-    config.max_aspect_ratio = get_parameter("geometry.max_aspect_ratio").as_double();
-    config.min_fill_ratio = get_parameter("geometry.min_fill_ratio").as_double();
-    config.min_inner_brightness = get_parameter("photometry.min_inner_brightness").as_double();
-    config.min_contrast_ratio = get_parameter("photometry.min_contrast_ratio").as_double();
+    config.min_hue = get_parameter(prefix + "segmentation.min_hue").as_double();
+    config.max_hue = get_parameter(prefix + "segmentation.max_hue").as_double();
+    config.min_saturation = get_parameter(prefix + "segmentation.min_saturation").as_double();
+    config.min_value = get_parameter(prefix + "segmentation.min_value").as_double();
+    config.min_green_excess = get_parameter(prefix + "segmentation.min_green_excess").as_double();
+    config.min_radius_px = get_parameter(prefix + "geometry.min_radius_px").as_double();
+    config.max_radius_px = get_parameter(prefix + "geometry.max_radius_px").as_double();
+    config.min_circularity = get_parameter(prefix + "geometry.min_circularity").as_double();
+    config.max_aspect_ratio = get_parameter(prefix + "geometry.max_aspect_ratio").as_double();
+    config.min_fill_ratio = get_parameter(prefix + "geometry.min_fill_ratio").as_double();
+    config.min_inner_brightness =
+        get_parameter(prefix + "photometry.min_inner_brightness").as_double();
+    config.min_contrast_ratio = get_parameter(prefix + "photometry.min_contrast_ratio").as_double();
     config.cleanup.close_kernel_size =
-        static_cast<int>(get_parameter("mask_cleanup.close_kernel_size").as_int());
+        static_cast<int>(get_parameter(prefix + "mask_cleanup.close_kernel_size").as_int());
     config.cleanup.close_iterations =
-        static_cast<int>(get_parameter("mask_cleanup.close_iterations").as_int());
+        static_cast<int>(get_parameter(prefix + "mask_cleanup.close_iterations").as_int());
     config.cleanup.open_kernel_size =
-        static_cast<int>(get_parameter("mask_cleanup.open_kernel_size").as_int());
+        static_cast<int>(get_parameter(prefix + "mask_cleanup.open_kernel_size").as_int());
     config.cleanup.open_iterations =
-        static_cast<int>(get_parameter("mask_cleanup.open_iterations").as_int());
-    config.cleanup.fill_holes = get_parameter("mask_cleanup.fill_holes").as_bool();
+        static_cast<int>(get_parameter(prefix + "mask_cleanup.open_iterations").as_int());
+    config.cleanup.fill_holes = get_parameter(prefix + "mask_cleanup.fill_holes").as_bool();
     return config;
+}
+
+void GreenLightDetectorNode::loadProfiles() {
+    const auto profile_names = get_parameter("profiles.names").as_string_array();
+    for (const auto& profile_name : profile_names) {
+        const std::string prefix = "profiles." + profile_name + ".";
+        DetectorProfile profile;
+        profile.config = readGreenLightDetectorConfig(prefix);
+        profile.ambiguity_margin = get_parameter(prefix + "ambiguity_margin").as_double();
+        if (!profile.config.isConfigValid() || !validAmbiguityMargin(profile.ambiguity_margin))
+            throw std::invalid_argument("Invalid green-light detector profile: " + profile_name);
+        profile.detector = std::make_shared<GreenLightDetector>(profile.config);
+        profiles_.emplace(profile_name, std::move(profile));
+
+        const auto modes = get_parameter(prefix + "modes").as_integer_array();
+        if (modes.empty())
+            throw std::invalid_argument("Detector profile has no target modes: " + profile_name);
+        std::unordered_set<std::int64_t> profile_modes;
+        for (const auto mode : modes) {
+            if (mode < 0 || mode > std::numeric_limits<std::uint8_t>::max() ||
+                !profile_modes.insert(mode).second)
+                throw std::invalid_argument("Invalid or duplicate target mode in profile: " +
+                                            profile_name);
+            if (!mode_profiles_.emplace(static_cast<std::uint8_t>(mode), profile_name).second)
+                throw std::invalid_argument("Target mode belongs to multiple detector profiles: " +
+                                            std::to_string(mode));
+        }
+    }
 }
 
 rcl_interfaces::msg::SetParametersResult
 GreenLightDetectorNode::onParametersChanged(const std::vector<rclcpp::Parameter>& parameters) {
-    GreenLightDetectorConfig updated;
-    bool green_light_detector_config_changed = false;
+    std::unordered_map<std::string, DetectorProfile> updated_profiles;
     {
-        std::lock_guard<std::mutex> lock(green_light_detector_mutex_);
-        updated = green_light_detector_config_;
+        std::lock_guard<std::mutex> lock(profiles_mutex_);
+        updated_profiles = profiles_;
     }
+    std::unordered_set<std::string> changed_profiles;
 
     try {
         for (const auto& parameter : parameters) {
             const std::string& name = parameter.get_name();
-            if (name == "image_topic" || name == "detection_topic" || name == "camera_info_topic") {
+            if (name == "image_topic" || name == "detection_topic" || name == "camera_info_topic" ||
+                name == "controller_topic" || name == "profiles.names" ||
+                (name.rfind("profiles.", 0) == 0 && endsWith(name, ".modes"))) {
                 return parameterFailure(name + " cannot be changed while the node is running");
             }
 
-            // clang-format off
-            #define UPDATE_DOUBLE(field, parameter_name)  \
-                if (name == parameter_name) {             \
-                    updated.field = parameter.as_double(); \
-                    green_light_detector_config_changed = true; \
-                    continue;                             \
-                }
-            UPDATE_DOUBLE(min_hue, "segmentation.min_hue")
-            UPDATE_DOUBLE(max_hue, "segmentation.max_hue")
-            UPDATE_DOUBLE(min_saturation, "segmentation.min_saturation")
-            UPDATE_DOUBLE(min_value, "segmentation.min_value")
-            UPDATE_DOUBLE(min_green_excess, "segmentation.min_green_excess")
-            UPDATE_DOUBLE(min_radius_px, "geometry.min_radius_px")
-            UPDATE_DOUBLE(max_radius_px, "geometry.max_radius_px")
-            UPDATE_DOUBLE(min_circularity, "geometry.min_circularity")
-            UPDATE_DOUBLE(max_aspect_ratio, "geometry.max_aspect_ratio")
-            UPDATE_DOUBLE(min_fill_ratio, "geometry.min_fill_ratio")
-            UPDATE_DOUBLE(min_inner_brightness, "photometry.min_inner_brightness")
-            UPDATE_DOUBLE(min_contrast_ratio, "photometry.min_contrast_ratio")
-            #undef UPDATE_DOUBLE
-            // clang-format on
+            for (auto& [profile_name, profile] : updated_profiles) {
+                const std::string prefix = "profiles." + profile_name + ".";
+                if (name.rfind(prefix, 0) != 0)
+                    continue;
+                const std::string field = name.substr(prefix.size());
 
-            if (name == "mask_cleanup.close_kernel_size") {
-                updated.cleanup.close_kernel_size = static_cast<int>(parameter.as_int());
-                green_light_detector_config_changed = true;
-            } else if (name == "mask_cleanup.close_iterations") {
-                updated.cleanup.close_iterations = static_cast<int>(parameter.as_int());
-                green_light_detector_config_changed = true;
-            } else if (name == "mask_cleanup.open_kernel_size") {
-                updated.cleanup.open_kernel_size = static_cast<int>(parameter.as_int());
-                green_light_detector_config_changed = true;
-            } else if (name == "mask_cleanup.open_iterations") {
-                updated.cleanup.open_iterations = static_cast<int>(parameter.as_int());
-                green_light_detector_config_changed = true;
-            } else if (name == "mask_cleanup.fill_holes") {
-                updated.cleanup.fill_holes = parameter.as_bool();
-                green_light_detector_config_changed = true;
-            } else {
-                continue;
+                // clang-format off
+                #define UPDATE_DOUBLE(member, parameter_name) \
+                    if (field == parameter_name) {             \
+                        profile.config.member = parameter.as_double(); \
+                        changed_profiles.insert(profile_name); \
+                        break;                                 \
+                    }
+                UPDATE_DOUBLE(min_hue, "segmentation.min_hue")
+                UPDATE_DOUBLE(max_hue, "segmentation.max_hue")
+                UPDATE_DOUBLE(min_saturation, "segmentation.min_saturation")
+                UPDATE_DOUBLE(min_value, "segmentation.min_value")
+                UPDATE_DOUBLE(min_green_excess, "segmentation.min_green_excess")
+                UPDATE_DOUBLE(min_radius_px, "geometry.min_radius_px")
+                UPDATE_DOUBLE(max_radius_px, "geometry.max_radius_px")
+                UPDATE_DOUBLE(min_circularity, "geometry.min_circularity")
+                UPDATE_DOUBLE(max_aspect_ratio, "geometry.max_aspect_ratio")
+                UPDATE_DOUBLE(min_fill_ratio, "geometry.min_fill_ratio")
+                UPDATE_DOUBLE(min_inner_brightness, "photometry.min_inner_brightness")
+                UPDATE_DOUBLE(min_contrast_ratio, "photometry.min_contrast_ratio")
+                #undef UPDATE_DOUBLE
+                // clang-format on
+
+                if (field == "ambiguity_margin") {
+                    profile.ambiguity_margin = parameter.as_double();
+                } else if (field == "mask_cleanup.close_kernel_size") {
+                    profile.config.cleanup.close_kernel_size = static_cast<int>(parameter.as_int());
+                } else if (field == "mask_cleanup.close_iterations") {
+                    profile.config.cleanup.close_iterations = static_cast<int>(parameter.as_int());
+                } else if (field == "mask_cleanup.open_kernel_size") {
+                    profile.config.cleanup.open_kernel_size = static_cast<int>(parameter.as_int());
+                } else if (field == "mask_cleanup.open_iterations") {
+                    profile.config.cleanup.open_iterations = static_cast<int>(parameter.as_int());
+                } else if (field == "mask_cleanup.fill_holes") {
+                    profile.config.cleanup.fill_holes = parameter.as_bool();
+                } else {
+                    break;
+                }
+                changed_profiles.insert(profile_name);
+                break;
             }
         }
     } catch (const rclcpp::ParameterTypeException& error) {
         return parameterFailure(error.what());
     }
 
-    if (!updated.isConfigValid()) {
-        return parameterFailure("Green-light detector parameter combination is invalid");
+    for (const auto& profile_name : changed_profiles) {
+        auto& profile = updated_profiles.at(profile_name);
+        if (!profile.config.isConfigValid() || !validAmbiguityMargin(profile.ambiguity_margin))
+            return parameterFailure("Green-light detector profile is invalid: " + profile_name);
+        profile.detector = std::make_shared<GreenLightDetector>(profile.config);
     }
-
-    std::shared_ptr<GreenLightDetector> updated_green_light_detector;
-    if (green_light_detector_config_changed) {
-        updated_green_light_detector = std::make_shared<GreenLightDetector>(updated);
-    }
-    {
-        std::lock_guard<std::mutex> lock(green_light_detector_mutex_);
-        if (updated_green_light_detector) {
-            green_light_detector_config_ = updated;
-            green_light_detector_ = std::move(updated_green_light_detector);
-        }
+    if (!changed_profiles.empty()) {
+        std::lock_guard<std::mutex> lock(profiles_mutex_);
+        profiles_ = std::move(updated_profiles);
     }
 
     rcl_interfaces::msg::SetParametersResult result;
     result.successful = true;
     return result;
+}
+
+void GreenLightDetectorNode::controllerCallback(
+    const dart_interfaces::msg::ControllerState::ConstSharedPtr& controller) {
+    const auto selected = mode_profiles_.find(controller->target_mode);
+    if (selected == mode_profiles_.end()) {
+        {
+            std::lock_guard<std::mutex> lock(profiles_mutex_);
+            active_profile_.reset();
+        }
+        pending_images_.clear();
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                             "No green-light detector profile for target mode %u",
+                             static_cast<unsigned int>(controller->target_mode));
+        return;
+    }
+
+    bool changed = false;
+    {
+        std::lock_guard<std::mutex> lock(profiles_mutex_);
+        changed = !active_profile_ || *active_profile_ != selected->second;
+        active_profile_ = selected->second;
+    }
+    if (changed) {
+        pending_images_.clear();
+        RCLCPP_INFO(get_logger(), "Selected green-light detector profile '%s' for target mode %u",
+                    selected->second.c_str(), static_cast<unsigned int>(controller->target_mode));
+    }
 }
 
 void GreenLightDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr& image) {
@@ -246,19 +343,28 @@ void GreenLightDetectorNode::processImage(
     Detection message;
     message.header = image->header;
     std::shared_ptr<GreenLightDetector> detector;
+    double ambiguity_margin = 0.0;
     {
-        std::lock_guard<std::mutex> lock(green_light_detector_mutex_);
-        detector = green_light_detector_;
+        std::lock_guard<std::mutex> lock(profiles_mutex_);
+        if (active_profile_) {
+            const auto profile = profiles_.find(*active_profile_);
+            if (profile != profiles_.end()) {
+                detector = profile->second.detector;
+                ambiguity_margin = profile->second.ambiguity_margin;
+            }
+        }
     }
     try {
+        if (!detector)
+            throw std::runtime_error("Waiting for a supported controller target mode");
         const auto converted = cv_bridge::toCvShare(image, "bgr8");
         auto result = detector->detect(converted->image);
         auto& candidates = result.candidates;
         std::sort(candidates.begin(), candidates.end(),
                   [](const auto& a, const auto& b) { return a.fit_score > b.fit_score; });
         message.status = result.contours_count == 0 ? Detection::CLOSED : Detection::NO_TARGET;
-        if (candidates.size() > 1 && candidates[0].fit_score - candidates[1].fit_score <
-                                         get_parameter("ambiguity_margin").as_double()) {
+        if (candidates.size() > 1 &&
+            candidates[0].fit_score - candidates[1].fit_score < ambiguity_margin) {
             message.status = Detection::NO_TARGET;
         } else if (!candidates.empty()) {
             const auto& target = candidates.front();
@@ -368,6 +474,12 @@ void GreenLightDetectorNode::publishDiagnostics() {
         statistics.last_processed_time == std::chrono::steady_clock::time_point{}
             ? -1.0
             : std::chrono::duration<double>(current_time - statistics.last_processed_time).count();
+    std::string active_profile = "none";
+    {
+        std::lock_guard<std::mutex> lock(profiles_mutex_);
+        if (active_profile_)
+            active_profile = *active_profile_;
+    }
 
     diagnostic_msgs::msg::DiagnosticArray message;
     message.header.stamp = now();
@@ -393,6 +505,7 @@ void GreenLightDetectorNode::publishDiagnostics() {
     status.values.push_back(keyValue("max_processing_ms", std::to_string(max_processing_ms)));
     status.values.push_back(
         keyValue("last_processed_age_sec", std::to_string(last_processed_age_seconds)));
+    status.values.push_back(keyValue("active_profile", active_profile));
     status.values.push_back(
         keyValue("images_received_total", std::to_string(statistics.received_total)));
     status.values.push_back(

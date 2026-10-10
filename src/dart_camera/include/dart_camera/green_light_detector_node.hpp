@@ -4,12 +4,16 @@
 #include <deque>
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <mutex>
+#include <optional>
 #include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
+#include <string>
+#include <unordered_map>
 
 #include "dart_camera/green_light_detector.hpp"
+#include "dart_interfaces/msg/controller_state.hpp"
 #include "dart_interfaces/msg/green_light_detection.hpp"
 namespace dart_vision::camera {
 class GreenLightDetectorNode : public rclcpp::Node {
@@ -18,9 +22,11 @@ class GreenLightDetectorNode : public rclcpp::Node {
 
   private:
     void declareParameters();
-    GreenLightDetectorConfig readGreenLightDetectorConfig() const;
+    void loadProfiles();
+    GreenLightDetectorConfig readGreenLightDetectorConfig(const std::string& prefix) const;
     rcl_interfaces::msg::SetParametersResult
     onParametersChanged(const std::vector<rclcpp::Parameter>&);
+    void controllerCallback(const dart_interfaces::msg::ControllerState::ConstSharedPtr&);
     void imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr&);
     void processImage(const sensor_msgs::msg::Image::ConstSharedPtr&,
                       const sensor_msgs::msg::CameraInfo::ConstSharedPtr&);
@@ -43,10 +49,18 @@ class GreenLightDetectorNode : public rclcpp::Node {
         std::chrono::steady_clock::time_point last_processed_time{};
     };
 
+    struct DetectorProfile {
+        GreenLightDetectorConfig config;
+        std::shared_ptr<GreenLightDetector> detector;
+        double ambiguity_margin{};
+    };
+
     std::string image_topic_, detection_topic_;
-    std::mutex green_light_detector_mutex_;
-    GreenLightDetectorConfig green_light_detector_config_;
-    std::shared_ptr<GreenLightDetector> green_light_detector_;
+    std::mutex profiles_mutex_;
+    std::unordered_map<std::string, DetectorProfile> profiles_;
+    std::unordered_map<std::uint8_t, std::string> mode_profiles_;
+    std::optional<std::string> active_profile_;
+    rclcpp::Subscription<dart_interfaces::msg::ControllerState>::SharedPtr controller_subscription_;
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_subscription_;
     rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_subscription_;
     struct PendingImage {
