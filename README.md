@@ -292,8 +292,15 @@ Jupyter 数据分析工具位于 `analysis` 依赖组，不会随默认开发环
 
 ```bash
 uv sync --python /usr/bin/python3 --group analysis
-uv run --group analysis jupyter lab analysis/notebooks/target_geometry_analysis.ipynb
+uv run --group analysis jupyter lab analysis/notebooks/target_impact_analysis.ipynb
 ```
+
+该 notebook 从 `dart_description` 的 URDF 读取离轨点、固定发射方向和装甲板上表面，分析
+绿灯到装甲板的常量 yaw 补偿可行性、滑轨全行程瞄准结果、固定目标时 yaw 误差造成的
+板面撞击位移，以及视觉角度和双目距离精度。板面使用 `u/v` 坐标，其中 `u` 对应
+`armor_link` local `y`，`v` 对应 local `z`；所有几何参数以当前 URDF 为准。
+计算结果、图表、适用边界和工程建议汇总在
+[`飞镖视觉瞄准几何与误差传播分析报告`](docs/reports/dart_vision_aiming_geometry_error_analysis/report.md)。
 
 Python 直接依赖统一声明在 `pyproject.toml`，完整解析版本由 `uv.lock` 锁定。修改依赖时使用
 `uv add --group dev <package>` 或 `uv add --group analysis <package>`，并提交同步更新的两个文件。
