@@ -312,19 +312,30 @@ GreenLightDetector::extractCandidates(const cv::Mat& binary_mask,
         }
 
         const cv::Point center_integer{cvRound(center_px.x), cvRound(center_px.y)};
-        cv::Mat inner_mask = cv::Mat::zeros(binary_mask.size(), CV_8UC1);
-        cv::circle(inner_mask, center_integer, cvRound(radius_px), cv::Scalar(255), cv::FILLED);
-        cv::Mat outer_mask = cv::Mat::zeros(binary_mask.size(), CV_8UC1);
-        cv::circle(outer_mask, center_integer, cvRound(radius_px * kOuterRadiusScale),
-                   cv::Scalar(255), cv::FILLED);
-        cv::circle(outer_mask, center_integer, cvRound(radius_px), cv::Scalar(0), cv::FILLED);
+        const int inner_radius = cvRound(radius_px);
+        const int outer_radius = cvRound(radius_px * kOuterRadiusScale);
+        // 包含完整外圆，并沿图像边界裁剪，保留原有圆环的像素选择和边缘统计语义。
+        const cv::Rect roi =
+            cv::Rect(center_integer.x - outer_radius, center_integer.y - outer_radius,
+                     2 * outer_radius + 1, 2 * outer_radius + 1) &
+            cv::Rect(0, 0, green_channel.cols, green_channel.rows);
+        if (roi.empty()) {
+            continue;
+        }
+        const cv::Point local_center = center_integer - roi.tl();
+        const cv::Mat green_roi = green_channel(roi);
+        cv::Mat inner_mask = cv::Mat::zeros(roi.size(), CV_8UC1);
+        cv::circle(inner_mask, local_center, inner_radius, cv::Scalar(255), cv::FILLED);
+        cv::Mat outer_mask = cv::Mat::zeros(roi.size(), CV_8UC1);
+        cv::circle(outer_mask, local_center, outer_radius, cv::Scalar(255), cv::FILLED);
+        cv::circle(outer_mask, local_center, inner_radius, cv::Scalar(0), cv::FILLED);
 
         if (cv::countNonZero(inner_mask) == 0 || cv::countNonZero(outer_mask) == 0) {
             continue;
         }
 
-        const double mean_inner_brightness = cv::mean(green_channel, inner_mask)[0];
-        const double mean_outer_brightness = cv::mean(green_channel, outer_mask)[0];
+        const double mean_inner_brightness = cv::mean(green_roi, inner_mask)[0];
+        const double mean_outer_brightness = cv::mean(green_roi, outer_mask)[0];
         // 用相邻的 1R～1.5R 圆环估计局部背景；分母钳制避免纯黑背景导致比值发散。
         const double contrast_ratio =
             mean_inner_brightness / std::max(mean_outer_brightness, kMinimumOuterBrightness);
