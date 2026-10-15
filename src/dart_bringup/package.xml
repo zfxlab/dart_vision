@@ -18,8 +18,17 @@
   <exec_depend>dart_aiming</exec_depend>
   <exec_depend>livox_ros2_driver</exec_depend>
   <exec_depend>image_transport_plugins</exec_depend>
+  <exec_depend>image_transport</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
   <exec_depend>rosbag2</exec_depend>
+  <exec_depend>rosbag2_py</exec_depend>
+  <exec_depend>rosbag2_interfaces</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>rcl_interfaces</exec_depend>
+  <exec_depend>rosgraph_msgs</exec_depend>
+  <exec_depend>rosidl_runtime_py</exec_depend>
+  <exec_depend>tf2_msgs</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
 
   <exec_depend>launch</exec_depend>

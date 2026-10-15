@@ -2,16 +2,125 @@
 
 import argparse
 import fcntl
+import json
 import os
 import shutil
 import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
 import yaml
+
+
+class RuntimeSnapshot:
+    """Capture effective parameters and subsequent parameter events, not just defaults."""
+
+    def __init__(self, destination, ready_file=None, required_nodes=()):
+        self.destination = destination
+        self.ready_file = ready_file
+        self.required_nodes = set(required_nodes)
+        self.stop_event = threading.Event()
+        self.summary = {"nodes": [], "errors": [], "baseline_files": "reference_only"}
+        self.thread = threading.Thread(target=self.run, daemon=True)
+
+    def run(self):
+        import rclpy
+        from rcl_interfaces.msg import ParameterEvent
+        from rclpy.executors import SingleThreadedExecutor
+        from rclpy.parameter_client import AsyncParameterClient
+        from rclpy.signals import SignalHandlerOptions
+        from rosidl_runtime_py.convert import message_to_ordereddict
+
+        context = rclpy.Context()
+        node = None
+        executor = None
+        captured = {}
+        try:
+            rclpy.init(context=context, signal_handler_options=SignalHandlerOptions.NO)
+            node = rclpy.create_node("recording_parameter_snapshot", context=context)
+            executor = SingleThreadedExecutor(context=context)
+            with (self.destination / "parameter_events.jsonl").open(
+                "w", encoding="utf-8"
+            ) as journal:
+
+                def on_event(message):
+                    journal.write(json.dumps(message_to_ordereddict(message)) + "\n")
+                    journal.flush()
+
+                node.create_subscription(
+                    ParameterEvent,
+                    "/parameter_events",
+                    on_event,
+                    rclpy.qos.qos_profile_parameter_events,
+                )
+                while not self.stop_event.is_set():
+                    for name, namespace in node.get_node_names_and_namespaces():
+                        full_name = f"{namespace.rstrip('/')}/{name}"
+                        if self.stop_event.is_set():
+                            break
+                        if name.startswith("_") or name == node.get_name() or full_name in captured:
+                            continue
+                        client = AsyncParameterClient(node, full_name)
+                        try:
+                            if not client.services_are_ready():
+                                continue
+                            listing = client.list_parameters()
+                            rclpy.spin_until_future_complete(
+                                node, listing, executor=executor, timeout_sec=0.5
+                            )
+                            if not listing.done() or listing.exception():
+                                continue
+                            names = listing.result().result.names
+                            values = client.get_parameters(names)
+                            rclpy.spin_until_future_complete(
+                                node, values, executor=executor, timeout_sec=0.5
+                            )
+                            if not values.done() or values.exception():
+                                continue
+                            captured[full_name] = {
+                                "captured_at": time.time(),
+                                "parameters": dict(
+                                    zip(
+                                        names,
+                                        [
+                                            json.loads(json.dumps(message_to_ordereddict(v)))
+                                            for v in values.result().values
+                                        ],
+                                        strict=True,
+                                    )
+                                ),
+                            }
+                            write_manifest(self.destination / "runtime_parameters.yaml", captured)
+                            self.summary["nodes"] = sorted(captured)
+                            if self.ready_file and self.required_nodes.issubset(captured):
+                                self.ready_file.touch()
+                        finally:
+                            # AsyncParameterClient owns six ROS service clients.
+                            for attr in vars(client).values():
+                                if isinstance(attr, rclpy.client.Client):
+                                    node.destroy_client(attr)
+                    rclpy.spin_once(node, executor=executor, timeout_sec=0.1)
+        except Exception as error:
+            self.summary["errors"].append(str(error))
+            print(f"Runtime parameter snapshot failed: {error}", file=sys.stderr, flush=True)
+        finally:
+            if executor is not None:
+                executor.shutdown()
+            if node is not None:
+                node.destroy_node()
+            if context.ok():
+                context.shutdown()
+
+    def close(self):
+        self.stop_event.set()
+        self.thread.join(timeout=5)
+        if self.thread.is_alive():
+            self.summary["errors"].append("Snapshot worker did not stop within 5 seconds")
+        return self.summary
 
 
 def positive_integer(value, name):
@@ -100,9 +209,19 @@ def expanded_path(value, config_path):
 
 
 def copy_configuration_snapshot(config_path, recording, destination):
-    config_root = config_path.parent
+    config_path = config_path.resolve()
+    snapshot_root = recording.get("snapshot_root", ".")
+    if not isinstance(snapshot_root, str) or not snapshot_root.strip():
+        raise ValueError("recording.snapshot_root must be a non-empty path")
+    config_root = (config_path.parent / snapshot_root).resolve()
     destination.mkdir()
-    shutil.copy2(config_path, destination / config_path.name)
+    try:
+        recording_relative_path = config_path.resolve().relative_to(config_root)
+    except ValueError:
+        recording_relative_path = Path(config_path.name)
+    recording_target = destination / recording_relative_path
+    recording_target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(config_path, recording_target)
     snapshot_files = recording.get("snapshot_files", [])
     if not isinstance(snapshot_files, list):
         raise ValueError("recording.snapshot_files must be a list")
@@ -175,14 +294,6 @@ def recover_session(session_path, storage_id):
     quarantined = []
 
     print(f"Recovering interrupted recording: {session_path}", flush=True)
-    if bag_path.is_dir() and rosbag_command_succeeds(["info", str(bag_path)]):
-        manifest["status"] = "recovered"
-        manifest["recovery"] = {"recovered_at": recovered_at, "quarantined_files": []}
-        write_manifest(manifest_path, manifest)
-        marker.unlink()
-        print("Recording metadata was already complete", flush=True)
-        return True
-
     extension = ".mcap" if storage_id == "mcap" else ".db3"
     storage_files = sorted(bag_path.glob(f"*{extension}")) if bag_path.is_dir() else []
     lost_found = session_path / "lost+found"
@@ -216,8 +327,17 @@ def recover_session(session_path, storage_id):
 
 def recover_interrupted_sessions(output_root, storage_id):
     for session_path in sorted(output_root.glob("dart_vision_*")):
-        if session_path.is_dir() and (session_path / ".recording").is_file():
-            recover_session(session_path, storage_id)
+        if not session_path.is_dir():
+            continue
+        manifest = read_manifest(session_path / "manifest.yaml")
+        marker = session_path / ".recording"
+        if marker.is_file() or (
+            manifest.get("status") == "failed"
+            and manifest.get("storage_status") != "complete"
+            and not manifest.get("recovery")
+        ):
+            marker.touch(exist_ok=True)
+            recover_session(session_path, manifest.get("storage_id", storage_id))
 
 
 def build_command(recording, topics, bag_path):
@@ -282,11 +402,16 @@ def main():
     parser = argparse.ArgumentParser(description="Record dart_vision topics with rosbag2")
     parser.add_argument("--config", required=True, type=Path)
     parser.add_argument("--profile")
+    parser.add_argument("--use-sim-time", action="store_true")
+    parser.add_argument("--replay-context", type=Path)
+    parser.add_argument("--replay-outcome", type=Path)
+    parser.add_argument("--snapshot-ready-file", type=Path)
+    parser.add_argument("--snapshot-required-nodes", nargs="*", default=[])
     args = parser.parse_args()
 
     config_path = args.config.expanduser().resolve()
     recording = load_configuration(config_path)
-    profile = args.profile or recording.get("default_profile", "compressed")
+    profile = args.profile or recording.get("default_profile", "full")
     topics = resolve_topics(recording.get("profiles"), profile)
     if not topics:
         raise ValueError(f"recording profile '{profile}' contains no topics")
@@ -324,6 +449,8 @@ def main():
 
     bag_path = session_path / "bag"
     command = build_command(recording, topics, bag_path)
+    if args.use_sim_time:
+        command.insert(command.index("--topics"), "--use-sim-time")
     manifest_path = session_path / "manifest.yaml"
     start_time = time.strftime("%Y-%m-%dT%H:%M:%S%z")
     manifest = {
@@ -339,7 +466,12 @@ def main():
         "bag_path": "bag",
         "command": command,
         "exit_code": None,
+        "storage_id": storage_id,
     }
+    if args.replay_context:
+        with args.replay_context.open(encoding="utf-8") as stream:
+            manifest["replay"] = yaml.safe_load(stream)
+    manifest["use_sim_time"] = args.use_sim_time
     write_manifest(manifest_path, manifest)
     active_marker.touch()
 
@@ -360,10 +492,14 @@ def main():
     signal.signal(signal.SIGTERM, request_stop)
 
     exit_code = 1
+    snapshot = RuntimeSnapshot(
+        session_path / "config", args.snapshot_ready_file, args.snapshot_required_nodes
+    )
     try:
         print(f"Recording profile '{profile}' to {session_path}", flush=True)
         print(f"Recording {len(topics)} topics with rosbag2", flush=True)
         child = subprocess.Popen(command, start_new_session=True)
+        snapshot.thread.start()
         if stop_requested:
             signal_process_group(child, signal.SIGINT)
         manifest["status"] = "recording"
@@ -385,14 +521,28 @@ def main():
                     stop_requested_at = None
             time.sleep(0.2)
         exit_code = child.returncode
-        if stop_requested and exit_code in (0, -signal.SIGINT, -signal.SIGTERM):
-            exit_code = 0
+        if termination_stage:
+            exit_code = exit_code or 1
     finally:
+        if snapshot.thread.ident is not None:
+            manifest["runtime_snapshot"] = snapshot.close()
         manifest["status"] = "complete" if exit_code == 0 else "failed"
+        if args.replay_outcome:
+            outcome = read_manifest(args.replay_outcome)
+            manifest["replay_outcome"] = outcome or {
+                "status": "failed",
+                "reason": "Missing replay outcome",
+            }
+            if manifest["replay_outcome"].get("status") != "complete":
+                manifest["status"] = manifest["replay_outcome"].get("status", "failed")
+        if exit_code != 0:
+            manifest["status"] = "failed"
+        manifest["storage_status"] = "complete" if exit_code == 0 else "failed"
         manifest["finished_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         manifest["exit_code"] = exit_code
         write_manifest(manifest_path, manifest)
-        active_marker.unlink(missing_ok=True)
+        if exit_code == 0:
+            active_marker.unlink(missing_ok=True)
         lock_file.close()
 
     return exit_code

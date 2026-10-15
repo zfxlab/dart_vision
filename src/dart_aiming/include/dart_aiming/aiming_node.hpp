@@ -2,6 +2,7 @@
 #define DART_AIMING_AIMING_NODE_HPP
 
 #include <array>
+#include <atomic>
 #include <builtin_interfaces/msg/time.hpp>
 #include <chrono>
 #include <cstdint>
@@ -53,6 +54,7 @@ class AimingNode : public rclcpp::Node {
     };
 
     bool fresh(const builtin_interfaces::msg::Time& stamp, double timeout) const;
+    void resetAfterClockJump();
     void invalidate(bool preserve_closed = false);
     void onController(ControllerState::ConstSharedPtr message);
     void onTarget(StereoTarget::ConstSharedPtr target);
@@ -94,6 +96,8 @@ class AimingNode : public rclcpp::Node {
     std::mutex diagnostic_mutex_;
     DiagnosticStatistics diagnostic_statistics_;
     std::chrono::steady_clock::time_point previous_diagnostic_time_;
+    std::atomic<bool> clock_jumped_{false};
+    rclcpp::JumpHandler::SharedPtr jump_handler_;
 };
 
 } // namespace dart_vision::aiming

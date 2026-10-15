@@ -2,6 +2,7 @@
 #define DART_STEREO_STEREO_TRIANGULATOR_NODE_HPP
 
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <deque>
@@ -81,6 +82,8 @@ class StereoTriangulatorNode : public rclcpp::Node {
     std::mutex diagnostic_mutex_;
     DiagnosticStatistics diagnostic_statistics_;
     std::chrono::steady_clock::time_point previous_diagnostic_time_;
+    std::atomic<bool> clock_jumped_{false};
+    rclcpp::JumpHandler::SharedPtr jump_handler_;
 };
 
 } // namespace dart_vision::stereo

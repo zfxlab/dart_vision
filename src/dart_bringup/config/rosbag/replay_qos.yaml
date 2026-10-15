@@ -1,0 +1,16 @@
+# image_transport republish 的输入订阅默认要求 reliable。
+/left_camera/image_raw/compressed:
+  history: keep_last
+  depth: 10
+  reliability: reliable
+  durability: volatile
+/right_camera/image_raw/compressed:
+  history: keep_last
+  depth: 10
+  reliability: reliable
+  durability: volatile
+/tf_static:
+  history: keep_last
+  depth: 1
+  reliability: reliable
+  durability: transient_local

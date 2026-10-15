@@ -25,7 +25,7 @@ install(
 )
 
 install(
-  PROGRAMS scripts/record_bag.py
+  PROGRAMS scripts/record_bag.py scripts/prepare_replay_bag.py scripts/play_replay_bag.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

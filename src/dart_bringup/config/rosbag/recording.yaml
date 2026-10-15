@@ -1,5 +1,5 @@
 recording:
-  default_profile: telemetry
+  default_profile: full
 
   output:
     # 相对路径以 Git 仓库根目录为基准，便于直接在项目内管理和复盘。
@@ -15,7 +15,9 @@ recording:
     max_bag_duration_seconds: 30
     compression_mode: none
 
-  # 每次录制时复制到 session/config，保留当时实际使用的运行配置。
+  # 相对于本文件定位配置根目录；snapshot_files 中的路径相对于此目录。
+  snapshot_root: ..
+  # 每次录制时复制到 session/config，保留配置根目录下的相对结构。
   snapshot_files:
     - camera/calibration/00DA1923275.yaml
     - camera/calibration/00DA1923281.yaml
@@ -26,24 +28,26 @@ recording:
     - serial.yaml
 
   profiles:
-    telemetry:
+    # 当前算法可重复测试所需的全部上游输入。
+    inputs:
       topics:
+        - /left_camera/image_raw/compressed
+        - /right_camera/image_raw/compressed
         - /left_camera/camera_info
         - /right_camera/camera_info
+        - /controller_state
+        - /tf
+        - /tf_static
+
+    # 项目复盘所需的完整话题集合，包含输入、算法结果和运行状态。
+    full:
+      include: inputs
+      topics:
         - /left_camera/detection
         - /right_camera/detection
         - /stereo_target
-        - /controller_state
         - /aim_command
         - /joint_states
         - /diagnostics
         - /rosout
         - /parameter_events
-        - /tf
-        - /tf_static
-
-    compressed:
-      include: telemetry
-      topics:
-        - /left_camera/image_raw/compressed
-        - /right_camera/image_raw/compressed

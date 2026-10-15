@@ -33,13 +33,13 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "recording_profile",
-                default_value="compressed",
-                description="Recording profile from recording.yaml",
+                default_value="full",
+                description="Recording profile: inputs for code testing, full for historical review",
             ),
             DeclareLaunchArgument(
                 "recording_config_file",
                 default_value=PathJoinSubstitution(
-                    [FindPackageShare("dart_bringup"), "config", "recording.yaml"]
+                    [FindPackageShare("dart_bringup"), "config", "rosbag", "recording.yaml"]
                 ),
                 description="Rosbag recording configuration YAML file",
             ),

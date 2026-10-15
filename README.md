@@ -136,28 +136,126 @@ ros2 launch dart_bringup camera_system.launch.py --show-args
 ### 数据录制
 
 项目使用 ROS 2 自带的 rosbag2 录制运行数据，配置统一保存在
-`src/dart_bringup/config/recording.yaml`。录制默认关闭；启用压缩图像和完整视觉链路记录：
+`src/dart_bringup/config/rosbag/recording.yaml`。提供两种录制模式：
+
+| 模式 | 内容 | 用途 |
+| --- | --- | --- |
+| `inputs` | 左右压缩图像、CameraInfo、控制器反馈、动态和静态 TF | 后续代码测试与算法重算 |
+| `full`（默认） | `inputs` 加检测、双目目标、瞄准指令、关节状态、诊断、日志和参数事件 | 完整历史复盘 |
+
+录制默认关闭；启动完整视觉链路并启用完整录制：
 
 ```bash
 ros2 launch dart_bringup vision_system.launch.py \
   start_recording:=true \
-  recording_profile:=compressed
+  recording_profile:=full
 ```
 
-只记录低带宽状态、算法结果、诊断、日志和 TF：
+只录制后续代码测试所需的输入（需已有运行中的数据源）：
 
 ```bash
-ros2 launch dart_bringup recording.launch.py profile:=telemetry
+ros2 launch dart_bringup recording.launch.py profile:=inputs
 ```
 
 每次录制默认保存在项目根目录的 `rosbag/dart_vision_YYYYMMDD_HHMMSS/`，其中 `bag/`
-保存 MCAP，`config/` 保存本次使用的运行配置副本，`manifest.yaml` 记录 profile、话题、Git
-版本和退出状态。左右压缩图像用于持续复盘，但有损压缩不适合作为严格的逐像素算法基准。
+保存 MCAP，`config/` 保存配置基线副本及节点实际参数，`manifest.yaml` 记录 profile、话题、Git
+版本和退出状态。快照保留配置目录结构，录制配置位于 `config/rosbag/recording.yaml`；
+`snapshot_root` 相对于录制配置文件定位快照源根目录。左右压缩图像用于持续复盘，但有损
+压缩不适合作为严格的逐像素算法基准。
+配置文件副本仅供参考；`config/runtime_parameters.yaml` 保存通过节点参数服务读取的实际值
+（包含 launch 覆盖），`config/parameter_events.jsonl` 持续保存参数变更事件。manifest 的
+`runtime_snapshot` 列出已抓取节点及错误；未开放参数服务的节点不能抓取。重算录制会在
+所有必需节点的参数抓取完成后开始播放。标定消息等非参数状态仍以包内数据为准。
 `rosbag/` 已被 Git 忽略，也可通过 `DART_BAG_ROOT` 临时覆盖保存根目录。录制按 30 秒或
 4 GiB 中先达到的条件滚动分片；直接下电后，下一次启动录制器会隔离无法读取的分片并对
-其余 MCAP 自动执行 `ros2 bag reindex`。最后一个未完成分片仍可能丢失。录制阶段不会自动
+其余 MCAP 自动执行 `ros2 bag reindex`。最后一个未完成分片仍可能丢失。异常录制会保留
+恢复标记，旧版遗漏标记的 failed 会话也会尝试恢复；恢复会将原 metadata
+和不可读分片移至 session 的 `lost+found/`，可人工检查。录制阶段不会自动
 删除或压缩历史数据，应在运行前确认磁盘剩余空间；执行 `git clean -fdx` 或删除工作区也会
 删除被忽略的录包。
+
+### 旧包裁剪与重算
+
+旧版本录包可以只保留左右压缩图像、CameraInfo、控制器状态和 TF，使用当前程序重新
+计算检测、双目目标和瞄准指令。先构建并加载当前工作区，然后生成新的 MCAP：
+
+```bash
+colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
+source install/setup.bash
+ros2 run dart_bringup prepare_replay_bag.py \
+  rosbag/dart_vision_20261015_000620 \
+  rosbag/dart_vision_20261015_000620_replay
+```
+
+输出目录必须不存在，原包保留。保留列表统一使用 `src/dart_bringup/config/rosbag/recording.yaml`
+的 `profiles.inputs`（支持 `include` 继承），录制、裁剪和重算回放共用同一份输入定义。
+图像内容、消息时间戳和 TF 不变；旧算法结果、日志、诊断和冗余关节状态不写入新包。
+`/controller_state` 使用自定义接口，需确保旧包和当前版本的消息结构兼容。
+
+```bash
+ros2 launch dart_bringup replay.launch.py \
+  bag:=rosbag/dart_vision_20261015_000620_replay
+```
+
+默认 `mode:=recompute`，该入口启动左右图像解码、当前检测/双目/瞄准节点，并用 `--clock-topics-all` 在每条消息前推进时钟，所有计算节点
+使用仿真时间。相机、串口、机器人描述和自动录制均关闭，TF 来自录包。默认等待 3 秒
+供节点发现，可通过 `delay:=5.0` 调整；机器处理不及时可用 `rate:=0.5` 降速。
+瞄准节点仅在仿真时间下容忍最多 10 ms 的跨话题时钟传输偏差，实机仍严格拒绝未来时间戳。
+双目队列与瞄准缓存通过实际 ROS 时钟回退事件清理，普通消息乱序不会清空双目队列。
+默认循环播放，到包末尾后自动从头开始，按 Ctrl+C 停止整个 launch。
+只播放一次可添加 `loop:=false`，播放结束后计算节点仍运行，按 Ctrl+C 退出。
+也可直接指定原包，此入口仍只播放输入白名单。
+
+查看录制时的全部信息，使用 `mode:=recorded`：
+
+```bash
+ros2 launch dart_bringup replay.launch.py \
+  bag:=rosbag/dart_vision_20261015_000620 mode:=recorded
+```
+
+历史模式按包内实际话题播放，包含旧版独有的话题，不使用当前录制白名单过滤；仅启动
+已有左右压缩图像的解码器，不启动当前检测、双目或瞄准算法。`inputs` 包也可历史回放，
+但其中没有历史算法结果。两种模式都读取整个分片目录，不需要先合并或裁剪，均支持
+`start`、`end`、`rate` 和 `loop`。历史自定义消息的查看仍需要兼容的接口定义。
+回放入口会提示可检测到的 `.msg` 字段差异或缺失接口，其他类型问题由 rosbag2 报告；
+区段导出保留原始消息描述和数据，不会自动将旧消息转换成新结构。历史模式也不要同时运行真实串口等执行节点。
+
+用 `start` 和 `end` 选择相对于包起点的秒数，例如循环回放第 10～20 秒：
+
+```bash
+ros2 launch dart_bringup replay.launch.py \
+  bag:=rosbag/dart_vision_20261015_000620_replay \
+  start:=10.0 end:=20.0 rate:=0.5
+```
+
+`start` 默认 0，`end` 默认 -1（直到包末尾）；添加 `loop:=false` 只播放所选区段一次。
+时间区段按录包时间计算，不受 `rate` 影响。指定区段会先生成临时 MCAP，保留原消息时间戳，
+并补入区段起点前的静态 TF、最近的 CameraInfo 和控制器状态，以及动态 TF 最新状态和
+起点前 0.5 秒内的历史。初始化消息的包接收时间设在区段起点前 1 ns，确保先于边界处的新状态，消息内部原始时间戳保留，
+因此初始化数据可能来自区段外；后续消息按所选区段播放。退出后清理临时包，原始包不变。
+循环用于重复观察，节点不会每轮重启，不保证各轮结果严格一致。
+
+重算时同时保存输入和当前算法结果：
+
+```bash
+ros2 launch dart_bringup replay.launch.py \
+  bag:=rosbag/dart_vision_20261015_000620 mode:=recompute \
+  start_recording:=true recording_profile:=full
+```
+
+启用录制后 `loop` 默认变为 false，显式设置 `loop:=true` 会报错。录制只支持 `recompute`，
+`recording_profile` 可选 `full`（含新结果）或 `inputs`。播放器先暂停，等待录制器订阅所有
+回放输入及所选 profile 的算法输出，并确认必需节点和实际参数快照就绪后继续；录制器使用仿真时间。暂停期间先发布区段起点时钟，使录制器完成发现。播放结束后等待 1 秒收尾，自动关闭录制并退出 launch，
+也可 Ctrl+C 提前结束。新 session 保存在现有录制根目录，可用 `DART_BAG_ROOT` 覆盖。
+`manifest.yaml` 的 `replay` 字段保存源包路径、元数据摘要、源 manifest（如存在）、区段、
+倍速和运行开关；`config/` 保存配置基线与实际参数。`storage_status` 表示文件关闭状态，
+`replay_outcome` 表示重算结果：正常结束为 complete，Ctrl+C 为 interrupted，节点或播放器
+失败为 failed。必需节点异常退出或播放器报错会令 launch 返回非零退出码；已正常关闭的
+失败任务包仍可读取，不会当作损坏文件反复恢复。可通过 `recording_config_file:=...` 指定
+录制与输入白名单共用的配置。录制以 ROS 实际收到的消息为准，
+不是对源包逐字节复制，也不会恢复源包中未播放的历史算法结果。
+
+离线回归检查（加载工作区后）：`python3 -m unittest discover -s src/dart_bringup/test -v`。
 
 ## ROS 包
 

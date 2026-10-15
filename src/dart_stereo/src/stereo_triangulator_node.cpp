@@ -82,6 +82,11 @@ StereoTriangulatorNode::StereoTriangulatorNode(const rclcpp::NodeOptions& option
         declare_parameter<std::string>("reference_frame", "stereo_camera_center_link", read_only);
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
     tf_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_);
+    rcl_jump_threshold_t threshold{};
+    threshold.min_backward.nanoseconds = -1;
+    threshold.on_clock_change = true;
+    jump_handler_ = get_clock()->create_jump_callback(
+        nullptr, [this](const rcl_time_jump_t&) { clock_jumped_.store(true); }, threshold);
     max_pair_delta_s_ = declare_parameter<double>("max_pair_delta_s", 0.03, read_only);
     const std::int64_t configured_queue_size = declare_parameter<int>("queue_size", 10, read_only);
 
@@ -135,6 +140,11 @@ void StereoTriangulatorNode::observationCallback(const GreenLightDetection::Cons
     }
     std::lock_guard<std::mutex> lock(queue_mutex_);
     auto& queue = is_left ? left_queue_ : right_queue_;
+    // Clear on an actual ROS clock jump, not on reordered observations.
+    if (clock_jumped_.exchange(false)) {
+        left_queue_.clear();
+        right_queue_.clear();
+    }
     queue.push_back(message);
     while (queue.size() > queue_size_) {
         queue.pop_front();

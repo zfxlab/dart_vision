@@ -6,15 +6,15 @@ from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
     default_config_file = PathJoinSubstitution(
-        [FindPackageShare("dart_bringup"), "config", "recording.yaml"]
+        [FindPackageShare("dart_bringup"), "config", "rosbag", "recording.yaml"]
     )
 
     return LaunchDescription(
         [
             DeclareLaunchArgument(
                 "profile",
-                default_value="compressed",
-                description="Recording profile from recording.yaml",
+                default_value="full",
+                description="Recording profile: inputs for code testing, full for historical review",
             ),
             DeclareLaunchArgument(
                 "config_file",

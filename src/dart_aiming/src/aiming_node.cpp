@@ -124,6 +124,11 @@ AimingNode::AimingNode(const rclcpp::NodeOptions& options)
     }
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
     tf_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_);
+    rcl_jump_threshold_t threshold{};
+    threshold.min_backward.nanoseconds = -1;
+    threshold.on_clock_change = true;
+    jump_handler_ = get_clock()->create_jump_callback(
+        nullptr, [this](const rcl_time_jump_t&) { clock_jumped_.store(true); }, threshold);
     publisher_ = create_publisher<AimCommand>(command_topic, 10);
     diagnostics_publisher_ =
         create_publisher<diagnostic_msgs::msg::DiagnosticArray>("/diagnostics", rclcpp::QoS(10));
@@ -142,7 +147,19 @@ AimingNode::AimingNode(const rclcpp::NodeOptions& options)
 
 bool AimingNode::fresh(const builtin_interfaces::msg::Time& stamp, double timeout) const {
     const double age = (now() - rclcpp::Time(stamp)).seconds();
-    return age >= 0.0 && age <= timeout;
+    // DDS does not order /clock against other topics. Permit a bounded delivery
+    // skew only with simulated time; hardware retains strict future rejection.
+    const double future_tolerance = get_parameter("use_sim_time").as_bool() ? 0.01 : 0.0;
+    return age >= -future_tolerance && age <= timeout;
+}
+
+void AimingNode::resetAfterClockJump() {
+    if (clock_jumped_.exchange(false)) {
+        controller_.reset();
+        last_target_stamp_.reset();
+        invalidate();
+        recordInvalid(InvalidReason::clock_regression);
+    }
 }
 
 void AimingNode::invalidate(bool preserve_closed) {
@@ -153,6 +170,7 @@ void AimingNode::invalidate(bool preserve_closed) {
 }
 
 void AimingNode::onController(ControllerState::ConstSharedPtr message) {
+    resetAfterClockJump();
     if (!fresh(message->header.stamp, controller_timeout_s_) ||
         !std::isfinite(message->launcher_yaw_rad) || !std::isfinite(message->dart_offset_rad) ||
         std::find(supported_target_modes_.begin(), supported_target_modes_.end(),
@@ -179,6 +197,7 @@ void AimingNode::onController(ControllerState::ConstSharedPtr message) {
 }
 
 void AimingNode::onTarget(StereoTarget::ConstSharedPtr target) {
+    resetAfterClockJump();
     {
         std::lock_guard<std::mutex> lock(diagnostic_mutex_);
         ++diagnostic_statistics_.targets_received_total;
@@ -191,12 +210,7 @@ void AimingNode::onTarget(StereoTarget::ConstSharedPtr target) {
         return;
     }
     if (last_target_stamp_) {
-        if (rclcpp::Time(*last_target_stamp_) > now()) {
-            // ROS 时钟回退时清除旧的去重时间。
-            last_target_stamp_.reset();
-            invalidate();
-            recordInvalid(InvalidReason::clock_regression);
-        } else if (rclcpp::Time(target->header.stamp) <= rclcpp::Time(*last_target_stamp_)) {
+        if (rclcpp::Time(target->header.stamp) <= rclcpp::Time(*last_target_stamp_)) {
             std::lock_guard<std::mutex> lock(diagnostic_mutex_);
             ++diagnostic_statistics_.duplicate_total;
             return;
@@ -284,6 +298,7 @@ void AimingNode::onTarget(StereoTarget::ConstSharedPtr target) {
 }
 
 void AimingNode::tick() {
+    resetAfterClockJump();
     if (target_stamp_ && !fresh(*target_stamp_, target_timeout_s_)) {
         const bool had_command = command_.has_value();
         invalidate();
