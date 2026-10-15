@@ -32,8 +32,6 @@ recording:
         - /right_camera/camera_info
         - /left_camera/detection
         - /right_camera/detection
-        - /left_camera/detection_filtered
-        - /right_camera/detection_filtered
         - /stereo_target
         - /controller_state
         - /aim_command

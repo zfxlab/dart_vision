@@ -211,12 +211,16 @@ ros2 launch dart_bringup recording.launch.py profile:=telemetry
 | --- | --- | --- |
 | `/left_camera/image_raw`、`/right_camera/image_raw` | `sensor_msgs/msg/Image` | 左右原始图像 |
 | `/left_camera/camera_info`、`/right_camera/camera_info` | `sensor_msgs/msg/CameraInfo` | 与图像同时间戳的相机参数 |
-| `/left_camera/detection`、`/right_camera/detection` | `dart_interfaces/msg/GreenLightDetection` | 相机光学坐标系中的原始目标单位视线 |
-| `/left_camera/detection_filtered`、`/right_camera/detection_filtered` | `dart_interfaces/msg/GreenLightDetection` | Kalman 滤波后的目标单位视线，供双目节点使用 |
+| `/left_camera/detection`、`/right_camera/detection` | `dart_interfaces/msg/GreenLightDetection` | 原始目标单位视线及绿灯中心像素坐标，供双目节点使用 |
 | `/stereo_target` | `dart_interfaces/msg/StereoTarget` | 双目中心坐标系中的三维目标 |
 | `/controller_state` | `dart_interfaces/msg/ControllerState` | 目标模式、飞镖偏角和电机反馈角 |
 | `/aim_command` | `dart_interfaces/msg/AimCommand` | 发射架坐标系中的偏转角和水平距离 |
 | `/joint_states` | `sensor_msgs/msg/JointState` | 校正后的发射架关节角 |
+
+检测节点不进行时间滤波。消息中的 `center_x_px`、`center_y_px` 为输入图像上未去畸变的亚像素中心，
+仅在 `status == DETECTED` 时有效，其余状态为 0；不要用坐标是否为零判断有效性。
+修改消息结构后需重新构建接口及依赖包，旧录包的消息类型与新接口不同。
+历史 Kalman 实验保留在 `analysis/labplot/`，离线回放使用独立的 `kalman_replay.yaml`。
 
 坐标约定：相机光学坐标系为 x 向右、y 向下、z 向前；双目中心和发射架参考系为
 x 向前、y 向左、z 向上。所有 yaw 和串口角度均使用弧度，并以向左为正。
