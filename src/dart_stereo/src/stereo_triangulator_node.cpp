@@ -201,8 +201,8 @@ void StereoTriangulatorNode::matchQueuedObservations() {
         } else {
             break;
         }
-        RCLCPP_WARN_THROTTLE(
-            get_logger(), *get_clock(), kWarningThrottleMs,
+        RCLCPP_DEBUG_THROTTLE(
+            get_logger(), *get_clock(), kDebugThrottleMs,
             "Dropping unmatched stereo observation; closest timestamp delta %.4f s", best_delta);
     }
 }
