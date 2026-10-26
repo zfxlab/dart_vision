@@ -9,6 +9,7 @@
 namespace dart_vision::serial {
 
 inline constexpr std::uint8_t kReceivePacketHeader = 0x5A;
+// 16 字节发送包：yaw、水平距离和有符号垂直高度差。
 inline constexpr std::uint8_t kSendPacketHeader = 0xA5;
 inline constexpr std::uint8_t kLoggerPacketHeader = 0xD5;
 
@@ -29,9 +30,10 @@ struct ReceivePacket {
  */
 struct SendPacket {
     std::uint8_t header{kSendPacketHeader};
-    std::uint8_t state{2}; ///< 0=CLOSED, 1=VALID, 2=INVALID; default unknown
-    float yaw_rad{};       ///< 加上 offset 后的相对偏转，向左为正
-    float distance_m{};    ///< 输出参考点到绿灯的水平距离；非VALID时清零
+    std::uint8_t state{2};         ///< 0=CLOSED, 1=VALID, 2=INVALID; default unknown
+    float yaw_rad{};               ///< 加上 offset 后的相对偏转，向左为正
+    float horizontal_distance_m{}; ///< 输出参考点到绿灯的水平距离；非VALID时清零
+    float vertical_difference_m{}; ///< 绿灯相对离轨点的垂直高度差，向上为正；非VALID时清零
     std::uint16_t crc{};
 } __attribute__((packed));
 
@@ -67,11 +69,14 @@ static_assert(offsetof(ReceivePacket, dart_offset_rad) == 3,
 static_assert(offsetof(ReceivePacket, launcher_yaw_rad) == 7,
               "ReceivePacket launcher_yaw_rad offset mismatch");
 static_assert(offsetof(ReceivePacket, crc) == 11, "ReceivePacket CRC offset mismatch");
-static_assert(sizeof(SendPacket) == 12, "SendPacket protocol size mismatch");
+static_assert(sizeof(SendPacket) == 16, "SendPacket protocol size mismatch");
 static_assert(offsetof(SendPacket, state) == 1, "SendPacket state offset mismatch");
 static_assert(offsetof(SendPacket, yaw_rad) == 2, "SendPacket yaw_rad offset mismatch");
-static_assert(offsetof(SendPacket, distance_m) == 6, "SendPacket distance_m offset mismatch");
-static_assert(offsetof(SendPacket, crc) == 10, "SendPacket CRC offset mismatch");
+static_assert(offsetof(SendPacket, horizontal_distance_m) == 6,
+              "SendPacket horizontal_distance_m offset mismatch");
+static_assert(offsetof(SendPacket, vertical_difference_m) == 10,
+              "SendPacket vertical_difference_m offset mismatch");
+static_assert(offsetof(SendPacket, crc) == 14, "SendPacket CRC offset mismatch");
 static_assert(sizeof(LoggerPacket) == 25, "LoggerPacket protocol size mismatch");
 static_assert(offsetof(LoggerPacket, state) == 1, "LoggerPacket state offset mismatch");
 static_assert(offsetof(LoggerPacket, string_l_force) == 15,

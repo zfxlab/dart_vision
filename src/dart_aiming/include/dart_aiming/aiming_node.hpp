@@ -78,7 +78,7 @@ class AimingNode : public rclcpp::Node {
     };
 
     std::string reference_frame_;
-    double target_timeout_s_{}, controller_timeout_s_{}, max_height_gap_m_{};
+    double target_timeout_s_{}, controller_timeout_s_{}, max_ray_gap_m_{};
     std::vector<std::int64_t> supported_target_modes_;
     std::unordered_map<std::uint8_t, QuadraticAimModel> fitting_models_;
     std::unique_ptr<tf2_ros::Buffer> tf_buffer_;

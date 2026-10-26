@@ -53,4 +53,10 @@ install(
 
 install(DIRECTORY include/ DESTINATION include)
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_packet test/test_packet.cpp)
+  target_link_libraries(test_packet serial_core)
+endif()
+
 ament_package()

@@ -29,7 +29,7 @@ class StereoTriangulatorNode : public rclcpp::Node {
     using GreenLightDetection = dart_interfaces::msg::GreenLightDetection;
     using StereoTarget = dart_interfaces::msg::StereoTarget;
     static constexpr std::size_t kRejectionReasonCount =
-        static_cast<std::size_t>(StereoTriangulationRejection::behind_reference_frame) + 1U;
+        static_cast<std::size_t>(StereoTriangulationRejection::camera_range_too_large) + 1U;
 
     void observationCallback(const GreenLightDetection::ConstSharedPtr& message, bool is_left);
     void matchQueuedObservations();

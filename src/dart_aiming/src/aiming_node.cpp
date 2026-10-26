@@ -73,10 +73,10 @@ AimingNode::AimingNode(const rclcpp::NodeOptions& options)
     const auto command_topic =
         declare_parameter<std::string>("command_topic", "/aim_command", read_only);
     reference_frame_ =
-        declare_parameter<std::string>("reference_frame", "launcher_frame", read_only);
+        declare_parameter<std::string>("reference_frame", "ballistic_reference_frame", read_only);
     target_timeout_s_ = declare_parameter<double>("target_timeout_s", 0.2, read_only);
     controller_timeout_s_ = declare_parameter<double>("controller_timeout_s", 0.3, read_only);
-    max_height_gap_m_ = declare_parameter<double>("max_height_gap_m", 0.1, read_only);
+    max_ray_gap_m_ = declare_parameter<double>("max_ray_gap_m", 0.1, read_only);
     supported_target_modes_ = declare_parameter<std::vector<std::int64_t>>("supported_target_modes",
                                                                            {1, 2, 3, 4}, read_only);
     const auto fitting_model_names = declare_parameter<std::vector<std::string>>(
@@ -84,7 +84,7 @@ AimingNode::AimingNode(const rclcpp::NodeOptions& options)
     const auto positive = [](double v) { return std::isfinite(v) && v > 0.0; };
     if (reference_frame_.empty() || stereo_topic.empty() || controller_topic.empty() ||
         command_topic.empty() || !positive(target_timeout_s_) || !positive(controller_timeout_s_) ||
-        !positive(max_height_gap_m_))
+        !positive(max_ray_gap_m_))
         throw std::invalid_argument("Invalid aiming node configuration");
 
     const std::unordered_set<std::int64_t> supported_modes(supported_target_modes_.begin(),
@@ -236,8 +236,8 @@ void AimingNode::onTarget(StereoTarget::ConstSharedPtr target) {
         tick();
         return;
     }
-    if (target->status != StereoTarget::VALID || !std::isfinite(target->height_gap_m) ||
-        target->height_gap_m < 0.0 || target->height_gap_m > max_height_gap_m_) {
+    if (target->status != StereoTarget::VALID || !std::isfinite(target->ray_gap_m) ||
+        target->ray_gap_m < 0.0 || target->ray_gap_m > max_ray_gap_m_) {
         invalidate();
         recordInvalid(InvalidReason::invalid_target);
         return;
@@ -280,7 +280,8 @@ void AimingNode::onTarget(StereoTarget::ConstSharedPtr target) {
         return;
     }
     const auto final_aim = applyDartOffset(*modeled_aim, controller_->dart_offset_rad);
-    if (!final_aim || final_aim->distance_m > std::numeric_limits<float>::max()) {
+    if (!final_aim || final_aim->horizontal_distance_m > std::numeric_limits<float>::max() ||
+        std::abs(final_aim->vertical_difference_m) > std::numeric_limits<float>::max()) {
         invalidate();
         recordInvalid(InvalidReason::offset_invalid);
         return;
@@ -290,7 +291,8 @@ void AimingNode::onTarget(StereoTarget::ConstSharedPtr target) {
     command.header.frame_id = reference_frame_;
     command.state = AimCommand::VALID;
     command.yaw_error_rad = static_cast<float>(final_aim->yaw_error_rad);
-    command.distance_m = static_cast<float>(final_aim->distance_m);
+    command.horizontal_distance_m = static_cast<float>(final_aim->horizontal_distance_m);
+    command.vertical_difference_m = static_cast<float>(final_aim->vertical_difference_m);
     command_ = command;
     target_stamp_ = target->header.stamp;
     recordAccepted(AimCommand::VALID, target->header.stamp);

@@ -1,27 +1,13 @@
 #include "dart_serial/packet.hpp"
 
+#include <cmath>
 #include <cstring>
+#include <limits>
 #include <type_traits>
 
 #include "dart_serial/crc.hpp"
 
 namespace dart_vision::serial {
-namespace {
-
-/**
- * @brief 将可按位复制的协议结构体转换为独立字节数组。
- */
-template <typename Packet> std::vector<std::uint8_t> packetToBytes(const Packet& packet) {
-    static_assert(std::is_trivially_copyable_v<Packet>,
-                  "Protocol packet must be trivially copyable");
-
-    std::vector<std::uint8_t> bytes(sizeof(Packet));
-    std::memcpy(bytes.data(), &packet, sizeof(Packet));
-    return bytes;
-}
-
-} // namespace
-
 PacketType packetTypeFromHeader(std::uint8_t header) noexcept {
     switch (header) {
     case kReceivePacketHeader:
@@ -52,9 +38,30 @@ std::size_t packetSizeFromHeader(std::uint8_t header) noexcept {
 
 std::vector<std::uint8_t> encodeSendPacket(SendPacket packet) {
     packet.header = kSendPacketHeader;
-    packet.crc = 0;
-
-    auto bytes = packetToBytes(packet);
+    // CLOSED/INVALID 不携带几何量。任何非法 VALID 数值都降级为 INVALID。
+    if (packet.state > 2 ||
+        (packet.state == 1 &&
+         (!std::isfinite(packet.yaw_rad) || !std::isfinite(packet.horizontal_distance_m) ||
+          packet.horizontal_distance_m <= 0.0F || !std::isfinite(packet.vertical_difference_m))))
+        packet.state = 2;
+    if (packet.state != 1) {
+        packet.yaw_rad = 0.0F;
+        packet.horizontal_distance_m = 0.0F;
+        packet.vertical_difference_m = 0.0F;
+    }
+    static_assert(sizeof(float) == 4 && std::numeric_limits<float>::is_iec559);
+    std::vector<std::uint8_t> bytes(sizeof(SendPacket), 0);
+    bytes[0] = packet.header;
+    bytes[1] = packet.state;
+    const auto write_float = [&bytes](std::size_t offset, float value) {
+        std::uint32_t bits;
+        std::memcpy(&bits, &value, sizeof(bits));
+        for (std::size_t index = 0; index < sizeof(bits); ++index)
+            bytes[offset + index] = static_cast<std::uint8_t>(bits >> (8U * index));
+    };
+    write_float(2, packet.yaw_rad);
+    write_float(6, packet.horizontal_distance_m);
+    write_float(10, packet.vertical_difference_m);
     appendCRC16(bytes.data(), bytes.size());
     return bytes;
 }

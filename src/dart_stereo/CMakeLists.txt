@@ -28,4 +28,10 @@ ament_target_dependencies(stereo_node rclcpp rcl_interfaces dart_interfaces diag
 install(TARGETS stereo_core stereo_node ARCHIVE DESTINATION lib LIBRARY DESTINATION lib RUNTIME DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_stereo_triangulator test/test_stereo_triangulator.cpp)
+  target_link_libraries(test_stereo_triangulator stereo_core)
+endif()
+
 ament_package()

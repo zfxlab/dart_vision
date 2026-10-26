@@ -9,7 +9,8 @@ namespace dart_vision::aiming {
 /// 输出参考坐标系中的瞄准结果，角度单位为弧度，距离单位为米。
 struct Aim {
     double yaw_error_rad{};
-    double distance_m{};
+    double horizontal_distance_m{};
+    double vertical_difference_m{}; ///< 目标相对参考原点的高度差，向上为正。
 };
 
 /// 输入坐标为 x 前、y 左、z 上；距离只计算 XY 水平分量，偏转角向左为正。

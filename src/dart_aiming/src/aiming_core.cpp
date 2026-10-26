@@ -27,7 +27,7 @@ std::optional<Aim> solve(double x, double y, double z) noexcept {
     const double distance = std::hypot(x, y);
     if (!std::isfinite(distance))
         return std::nullopt;
-    return Aim{wrapAngle(std::atan2(y, x)), distance};
+    return Aim{wrapAngle(std::atan2(y, x)), distance, z};
 }
 
 QuadraticAimModel::QuadraticAimModel(Coefficients yaw_coefficients,
@@ -38,22 +38,25 @@ QuadraticAimModel::QuadraticAimModel(Coefficients yaw_coefficients,
 }
 
 std::optional<Aim> QuadraticAimModel::apply(const Aim& input) const noexcept {
-    if (!std::isfinite(input.yaw_error_rad) || !std::isfinite(input.distance_m) ||
-        input.distance_m <= 0.0)
+    if (!std::isfinite(input.yaw_error_rad) || !std::isfinite(input.horizontal_distance_m) ||
+        input.horizontal_distance_m <= 0.0 || !std::isfinite(input.vertical_difference_m))
         return std::nullopt;
     const Aim output{evaluateQuadratic(yaw_coefficients_, input.yaw_error_rad),
-                     evaluateQuadratic(distance_coefficients_, input.distance_m)};
-    if (!std::isfinite(output.yaw_error_rad) || !std::isfinite(output.distance_m) ||
-        output.distance_m <= 0.0)
+                     evaluateQuadratic(distance_coefficients_, input.horizontal_distance_m),
+                     input.vertical_difference_m};
+    if (!std::isfinite(output.yaw_error_rad) || !std::isfinite(output.horizontal_distance_m) ||
+        output.horizontal_distance_m <= 0.0)
         return std::nullopt;
     return output;
 }
 
 std::optional<Aim> applyDartOffset(const Aim& input, const double offset_rad) noexcept {
-    if (!std::isfinite(input.yaw_error_rad) || !std::isfinite(input.distance_m) ||
-        input.distance_m <= 0.0 || !std::isfinite(offset_rad))
+    if (!std::isfinite(input.yaw_error_rad) || !std::isfinite(input.horizontal_distance_m) ||
+        input.horizontal_distance_m <= 0.0 || !std::isfinite(input.vertical_difference_m) ||
+        !std::isfinite(offset_rad))
         return std::nullopt;
-    return Aim{wrapAngle(input.yaw_error_rad + offset_rad), input.distance_m};
+    return Aim{wrapAngle(input.yaw_error_rad + offset_rad), input.horizontal_distance_m,
+               input.vertical_difference_m};
 }
 
 } // namespace dart_vision::aiming

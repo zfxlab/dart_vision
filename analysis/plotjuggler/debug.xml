@@ -21,7 +21,20 @@
       <plot flip_x="false" flip_y="false" line_width="1.0" mode="TimeSeries">
        <range bottom="13.717851" left="1792049581.931108" right="1792049611.916011" top="13.732594"/>
        <limitY/>
-       <curve color="#f14cc1" name="aim_command_distance_m"/>
+       <curve color="#f14cc1" name="aim_command_horizontal_distance_m"/>
+      </plot>
+     </DockArea>
+    </DockSplitter>
+   </Container>
+  </Tab>
+  <Tab containers="1" tab_name="vertical_difference">
+   <Container>
+    <DockSplitter count="1" orientation="-" sizes="1">
+     <DockArea name="...">
+      <plot flip_x="false" flip_y="false" line_width="1.0" mode="TimeSeries">
+       <range bottom="-3" left="1792049581.931108" right="1792049611.916011" top="3"/>
+       <limitY/>
+       <curve color="#f14cc1" name="aim_command_vertical_difference_m"/>
       </plot>
      </DockArea>
     </DockSplitter>
@@ -171,15 +184,27 @@ return value</function>
     <v2>/aim_command/state</v2>
    </additional_sources>
   </snippet>
-  <snippet language="LUA" name="aim_command_distance_m">
+  <snippet language="LUA" name="aim_command_horizontal_distance_m">
    <global></global>
    <function>if v2~=1 then
     return 0/0
 end
 return value</function>
-   <linked_source>/aim_command/distance_m</linked_source>
+   <linked_source>/aim_command/horizontal_distance_m</linked_source>
    <additional_sources>
-    <v1>/aim_command/distance_m</v1>
+    <v1>/aim_command/horizontal_distance_m</v1>
+    <v2>/aim_command/state</v2>
+   </additional_sources>
+  </snippet>
+  <snippet language="LUA" name="aim_command_vertical_difference_m">
+   <global></global>
+   <function>if v2~=1 then
+    return 0/0
+end
+return value</function>
+   <linked_source>/aim_command/vertical_difference_m</linked_source>
+   <additional_sources>
+    <v1>/aim_command/vertical_difference_m</v1>
     <v2>/aim_command/state</v2>
    </additional_sources>
   </snippet>

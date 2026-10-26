@@ -318,11 +318,14 @@ void SerialNode::sendCallback(const dart_interfaces::msg::AimCommand::ConstShare
         if (fresh && message->state == Command::CLOSED) {
             packet.state = Command::CLOSED;
         } else if (fresh && message->state == Command::VALID &&
-                   std::isfinite(message->yaw_error_rad) && std::isfinite(message->distance_m) &&
-                   message->distance_m > 0.0F) {
+                   std::isfinite(message->yaw_error_rad) &&
+                   std::isfinite(message->horizontal_distance_m) &&
+                   std::isfinite(message->vertical_difference_m) &&
+                   message->horizontal_distance_m > 0.0F) {
             packet.state = Command::VALID;
             packet.yaw_rad = message->yaw_error_rad;
-            packet.distance_m = message->distance_m;
+            packet.horizontal_distance_m = message->horizontal_distance_m;
+            packet.vertical_difference_m = message->vertical_difference_m;
         }
 
         const auto frame = encodeSendPacket(packet);

@@ -312,16 +312,47 @@ ros2 launch dart_bringup replay.launch.py \
 | `/left_camera/detection`、`/right_camera/detection` | `dart_interfaces/msg/GreenLightDetection` | 原始目标单位视线及绿灯中心像素坐标，供双目节点使用 |
 | `/stereo_target` | `dart_interfaces/msg/StereoTarget` | 双目中心坐标系中的三维目标 |
 | `/controller_state` | `dart_interfaces/msg/ControllerState` | 目标模式、飞镖偏角和电机反馈角 |
-| `/aim_command` | `dart_interfaces/msg/AimCommand` | 发射架坐标系中的偏转角和水平距离 |
+| `/aim_command` | `dart_interfaces/msg/AimCommand` | 离轨点水平参考系中的偏转角、水平距离和有符号垂直高度差 |
 | `/joint_states` | `sensor_msgs/msg/JointState` | 校正后的发射架关节角 |
 
 检测节点不进行时间滤波。消息中的 `center_x_px`、`center_y_px` 为输入图像上未去畸变的亚像素中心，
 仅在 `status == DETECTED` 时有效，其余状态为 0；不要用坐标是否为零判断有效性。
-修改消息结构后需重新构建接口及依赖包，旧录包的消息类型与新接口不同。
+录包回放需要使用与包内数据一致的消息类型定义。
 历史 Kalman 实验保留在 `analysis/labplot/`，离线回放使用独立的 `kalman_replay.yaml`。
 
 坐标约定：相机光学坐标系为 x 向右、y 向下、z 向前；双目中心和发射架参考系为
 x 向前、y 向左、z 向上。所有 yaw 和串口角度均使用弧度，并以向左为正。
+
+双目使用三维视线最近点中点估计绿灯中心。
+`StereoTarget.ray_gap_m` 为两条空间视线最近点的间距；`min_ray_angle_deg` 限制三维交会锐角，
+同时排除平行和反平行退化；`max_camera_range_m` 限制估计点到任一相机光心的空间距离。
+`max_ray_gap_m` 限制两条视线最近点的间距，默认 0.1 m，需根据实机数据验证。
+双目 `position` 是三维估计，`distance` 和 `yaw` 是其在双目参考系中的派生量。
+
+瞄准默认转换到 `ballistic_reference_frame`：原点与 `dart_release_link` 一致，轴与
+`launcher_frame` 对齐，不带离轨方向的俯仰角。当前模型假设底座水平且机构只有 yaw 转动；
+底座倾斜时须提供重力对齐的参考系。`horizontal_distance_m = hypot(x, y)`（可经过距离校正，
+当前系数为恒等映射），`vertical_difference_m = z`，向上为正，允许负数和零。
+测量目标为绿灯中心；高度差原样透传，yaw 补偿只作用于偏转角。
+三维估计不依赖前哨站或基地的预设高度，发射能量映射由下位机使用两个距离分量处理。
+
+### 串口发送协议
+
+发送帧头为 `0xA5`，帧长度为 16 字节，下位机按下表解析字段和校验 CRC。
+普通控制器反馈帧头为 `0x5A`，控制器日志包帧头为 `0xD5`。
+
+| 字节偏移 | 字段 | 编码与含义 |
+| --- | --- | --- |
+| 0 | header | `0xA5` |
+| 1 | state | `0=CLOSED`、`1=VALID`、`2=INVALID` |
+| 2–5 | yaw_rad | IEEE 754 float32，小端，弧度，向左为正 |
+| 6–9 | horizontal_distance_m | float32 小端，离轨点到绿灯的水平距离，米 |
+| 10–13 | vertical_difference_m | float32 小端，绿灯相对离轨点的垂直高度差，米，向上为正 |
+| 14–15 | CRC16 | 前 14 字节的校验，小端；初值 `0xffff`，反射多项式 `0x8408`，无最终异或 |
+
+只有 `VALID` 的几何字段有效，其他状态下三个浮点字段全部清零。
+输入重算要求 TF 中包含与录制时离轨位置一致的 `ballistic_reference_frame`，
+其轴方向与水平发射架参考系对齐。PlotJuggler 布局提供偏转角、水平距离和垂直高度差曲线。
 
 视觉派生消息始终保留原始测量时间：单目检测继承图像时间戳，双目目标使用左右图像
 时间戳的中间时刻，瞄准指令继续继承该双目测量时间。定时重复发布不会刷新时间戳；没有

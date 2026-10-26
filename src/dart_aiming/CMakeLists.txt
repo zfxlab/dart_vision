@@ -39,4 +39,10 @@ install(TARGETS aiming_core aiming_node
   RUNTIME DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_aiming_core test/test_aiming_core.cpp)
+  target_link_libraries(test_aiming_core aiming_core)
+endif()
+
 ament_package()
