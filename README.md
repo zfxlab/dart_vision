@@ -297,6 +297,37 @@ ros2 launch dart_bringup replay.launch.py \
 用于模式 `0`，`base` 用于模式 `1` 至 `4`。左右检测节点会订阅 `/controller_state` 并自动
 切换 profile；未收到受支持的模式前不执行识别。
 
+每套 profile 的 `center.method` 可独立选择绿灯观测中心算法，默认保留
+`brightness_weighted`。候选分割、半径/亮度筛选、圆拟合得分和多候选消歧共用原有逻辑，
+只改变最终 `center_x_px/center_y_px` 及由它们计算的单位视线。
+
+| `center.method` | 计算方式 | 对照测试时关注 |
+| --- | --- | --- |
+| `brightness_weighted` | 轮廓内 G 通道减去局部背景，负权重置零后计算质心 | 默认方法；受内部亮度分布和饱和影响 |
+| `contour_centroid` | 外轮廓围成区域的面积质心（多边形矩） | 不使用内部亮度权重；受分割边界影响 |
+| `enclosing_circle` | 最小外接圆中心 | 速度快；容易被边界突起拉动 |
+| `circle_fit` | 对完整像素边界做代数最小二乘圆拟合 | 利用整圈边界；不是抗离群点拟合 |
+| `ellipse_fit` | 对完整像素边界调用 OpenCV `fitEllipse` | 允许椭圆形状；小目标或不完整边界可能不稳定 |
+
+拟合中心时恢复逐像素边界，筛选用的简化轮廓不变。算法退化、拟合失败或中心越出轮廓
+包围框时回退到已验证的最小外接圆中心；`/diagnostics` 的 `center_method` 显示当前激活
+profile 的配置，`center_fallback_total` 累计统计有效检测中使用回退中心的次数。
+切换方法不会重置此计数，应比较测试区间内的增量。
+
+可在运行时切换，无需重启。基地模式（1～4）例如：
+
+```bash
+ros2 param set /left_camera/green_light_detector profiles.base.center.method circle_fit
+ros2 param set /right_camera/green_light_detector profiles.base.center.method circle_fit
+```
+
+前哨站模式 0 使用 `profiles.outpost.center.method`。两个节点的设置不是跨节点原子操作，
+应等左右均设置成功后再采样。运行时改参不会写回 YAML；持久配置修改
+`src/dart_bringup/config/green_light_detector.yaml` 中对应的 `center.method`。
+回放比较使用 `mode:=recompute`，`mode:=recorded` 不会重算旧检测结果。
+不同方法可能有固定中心偏移，之前按亮度加权中心拟合的临时内外参不能直接作为其他方法的
+精度依据；比较时同时记录均值偏移、1 秒窗口稳定性、检测率和回退计数。
+
 当前相机清单将 `00DA1923275` 配置为左相机，将 `00DA1923281` 配置为右相机。
 部署前必须确认实机序列号、左右安装位置和对应标定文件一致。
 

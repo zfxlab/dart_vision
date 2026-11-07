@@ -113,8 +113,7 @@ GreenLightDetectorNode::GreenLightDetectorNode(const rclcpp::NodeOptions& option
     RCLCPP_INFO(get_logger(),
                 "Green-light detector listening on '%s', publishing '%s' with "
                 "%zu target profiles",
-                image_topic_.c_str(), detection_topic_.c_str(),
-                profiles_.size());
+                image_topic_.c_str(), detection_topic_.c_str(), profiles_.size());
 }
 
 void GreenLightDetectorNode::declareParameters() {
@@ -142,6 +141,12 @@ void GreenLightDetectorNode::declareParameters() {
                                       : std::vector<std::int64_t>{};
         declare_parameter<std::vector<std::int64_t>>(prefix + "modes", default_modes, read_only);
         declare_parameter<double>(prefix + "ambiguity_margin", 0.05);
+        rcl_interfaces::msg::ParameterDescriptor center_descriptor;
+        center_descriptor.description = "Observation center algorithm; may be changed at runtime";
+        center_descriptor.additional_constraints =
+            "brightness_weighted, contour_centroid, enclosing_circle, circle_fit, ellipse_fit";
+        declare_parameter<std::string>(prefix + "center.method", defaults.center_method,
+                                       center_descriptor);
         declare_parameter<double>(prefix + "segmentation.min_hue", defaults.min_hue);
         declare_parameter<double>(prefix + "segmentation.max_hue", defaults.max_hue);
         declare_parameter<double>(prefix + "segmentation.min_saturation", defaults.min_saturation);
@@ -172,6 +177,7 @@ void GreenLightDetectorNode::declareParameters() {
 GreenLightDetectorConfig
 GreenLightDetectorNode::readGreenLightDetectorConfig(const std::string& prefix) const {
     GreenLightDetectorConfig config;
+    config.center_method = get_parameter(prefix + "center.method").as_string();
     config.min_hue = get_parameter(prefix + "segmentation.min_hue").as_double();
     config.max_hue = get_parameter(prefix + "segmentation.max_hue").as_double();
     config.min_saturation = get_parameter(prefix + "segmentation.min_saturation").as_double();
@@ -237,8 +243,7 @@ GreenLightDetectorNode::onParametersChanged(const std::vector<rclcpp::Parameter>
     try {
         for (const auto& parameter : parameters) {
             const std::string& name = parameter.get_name();
-            if (name == "image_topic" || name == "detection_topic" ||
-                name == "camera_info_topic" ||
+            if (name == "image_topic" || name == "detection_topic" || name == "camera_info_topic" ||
                 name == "controller_topic" || name == "profiles.names" ||
                 (name.rfind("profiles.", 0) == 0 && endsWith(name, ".modes"))) {
                 return parameterFailure(name + " cannot be changed while the node is running");
@@ -272,7 +277,9 @@ GreenLightDetectorNode::onParametersChanged(const std::vector<rclcpp::Parameter>
                 #undef UPDATE_DOUBLE
                 // clang-format on
 
-                if (field == "ambiguity_margin") {
+                if (field == "center.method") {
+                    profile.config.center_method = parameter.as_string();
+                } else if (field == "ambiguity_margin") {
                     profile.ambiguity_margin = parameter.as_double();
                 } else if (field == "mask_cleanup.close_kernel_size") {
                     profile.config.cleanup.close_kernel_size = static_cast<int>(parameter.as_int());
@@ -303,6 +310,12 @@ GreenLightDetectorNode::onParametersChanged(const std::vector<rclcpp::Parameter>
     }
     if (!changed_profiles.empty()) {
         std::lock_guard<std::mutex> lock(profiles_mutex_);
+        for (const auto& name : changed_profiles) {
+            if (profiles_.at(name).config.center_method !=
+                updated_profiles.at(name).config.center_method)
+                RCLCPP_INFO(get_logger(), "Profile '%s' center method: %s", name.c_str(),
+                            updated_profiles.at(name).config.center_method.c_str());
+        }
         profiles_ = std::move(updated_profiles);
     }
 
@@ -378,6 +391,7 @@ void GreenLightDetectorNode::processImage(
     raw_message.header = image->header;
     std::shared_ptr<GreenLightDetector> detector;
     double ambiguity_margin = 0.0;
+    bool center_fallback = false;
     {
         std::lock_guard<std::mutex> lock(profiles_mutex_);
         if (active_profile_) {
@@ -425,6 +439,7 @@ void GreenLightDetectorNode::processImage(
             raw_message.center_x_px = target.center_px.x;
             raw_message.center_y_px = target.center_px.y;
             raw_message.score = target.fit_score;
+            center_fallback = target.center_fallback;
         }
     } catch (const std::exception& e) {
         raw_message.status = Detection::ERROR;
@@ -459,6 +474,8 @@ void GreenLightDetectorNode::processImage(
     case Detection::DETECTED:
         ++statistics.detected_total;
         ++statistics.detected_interval;
+        if (center_fallback)
+            ++statistics.center_fallback_total;
         break;
     case Detection::CLOSED:
         ++statistics.closed_total;
@@ -522,10 +539,13 @@ void GreenLightDetectorNode::publishDiagnostics() {
             ? -1.0
             : std::chrono::duration<double>(current_time - statistics.last_processed_time).count();
     std::string active_profile = "none";
+    std::string center_method = "none";
     {
         std::lock_guard<std::mutex> lock(profiles_mutex_);
-        if (active_profile_)
+        if (active_profile_) {
             active_profile = *active_profile_;
+            center_method = profiles_.at(*active_profile_).config.center_method;
+        }
     }
 
     diagnostic_msgs::msg::DiagnosticArray message;
@@ -558,6 +578,9 @@ void GreenLightDetectorNode::publishDiagnostics() {
     status.values.push_back(
         keyValue("last_processed_age_sec", std::to_string(last_processed_age_seconds)));
     status.values.push_back(keyValue("active_profile", active_profile));
+    status.values.push_back(keyValue("center_method", center_method));
+    status.values.push_back(
+        keyValue("center_fallback_total", std::to_string(statistics.center_fallback_total)));
     status.values.push_back(
         keyValue("images_received_total", std::to_string(statistics.received_total)));
     status.values.push_back(

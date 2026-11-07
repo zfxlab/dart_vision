@@ -40,6 +40,7 @@ class GreenLightDetectorNode : public rclcpp::Node {
         std::uint64_t closed_total{};
         std::uint64_t no_target_total{};
         std::uint64_t errors_total{};
+        std::uint64_t center_fallback_total{};
         std::uint64_t received_interval{};
         std::uint64_t processed_interval{};
         std::uint64_t detected_interval{};

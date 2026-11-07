@@ -5,6 +5,7 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 #include <stdexcept>
+#include <utility>
 
 namespace dart_vision::camera {
 namespace {
@@ -76,6 +77,93 @@ calculateBrightnessWeightedCenter(const std::vector<cv::Point>& contour,
     return cv::Point2f{static_cast<float>(center_x), static_cast<float>(center_y)};
 }
 
+// 筛选仍使用 CHAIN_APPROX_SIMPLE。仅在拟合中心时恢复逐像素边界，避免长直边
+// 只剩端点造成采样权重不均，并保持默认算法的轮廓、得分和筛选行为不变。
+std::vector<cv::Point> denseBoundary(const std::vector<cv::Point>& contour) {
+    const cv::Rect bounds = cv::boundingRect(contour);
+    cv::Mat mask = cv::Mat::zeros(bounds.size(), CV_8UC1);
+    cv::drawContours(mask, std::vector<std::vector<cv::Point>>{contour}, -1, cv::Scalar(255),
+                     cv::FILLED, cv::LINE_8, cv::noArray(), 0, -bounds.tl());
+    std::vector<std::vector<cv::Point>> boundaries;
+    cv::findContours(mask, boundaries, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE, bounds.tl());
+    return boundaries.size() == 1U ? std::move(boundaries.front()) : std::vector<cv::Point>{};
+}
+
+std::optional<cv::Point2f> fitCircleCenter(const std::vector<cv::Point>& points) {
+    if (points.size() < 3U)
+        return std::nullopt;
+    cv::Point2d origin{};
+    for (const auto& point : points)
+        origin += cv::Point2d(point);
+    origin *= 1.0 / static_cast<double>(points.size());
+    double scale = 0.0;
+    for (const auto& point : points)
+        scale = std::max(scale, cv::norm(cv::Point2d(point) - origin));
+    if (!std::isfinite(scale) || scale <= 0.0)
+        return std::nullopt;
+
+    // 局部归一化后求解 2*a*x + 2*b*y + c = x^2 + y^2，中心为 (a,b)。
+    // 这是代数最小二乘圆拟合，不是最小外接圆，也不是抗离群点拟合。
+    cv::Mat design(static_cast<int>(points.size()), 3, CV_64F);
+    cv::Mat rhs(static_cast<int>(points.size()), 1, CV_64F);
+    for (int i = 0; i < design.rows; ++i) {
+        const auto point = (cv::Point2d(points[i]) - origin) * (1.0 / scale);
+        design.at<double>(i, 0) = 2.0 * point.x;
+        design.at<double>(i, 1) = 2.0 * point.y;
+        design.at<double>(i, 2) = 1.0;
+        rhs.at<double>(i) = point.dot(point);
+    }
+    const cv::SVD decomposition(design);
+    if (decomposition.w.at<double>(2) <= decomposition.w.at<double>(0) * 1e-8)
+        return std::nullopt;
+    cv::Mat solution;
+    decomposition.backSubst(rhs, solution);
+    const double a = solution.at<double>(0), b = solution.at<double>(1);
+    const double radius_squared = a * a + b * b + solution.at<double>(2);
+    if (!std::isfinite(radius_squared) || radius_squared <= 0.0)
+        return std::nullopt;
+    return cv::Point2f{static_cast<float>(origin.x + scale * a),
+                       static_cast<float>(origin.y + scale * b)};
+}
+
+std::optional<cv::Point2f> calculateObservationCenter(const std::string& method,
+                                                      const std::vector<cv::Point>& contour,
+                                                      const cv::Mat& green_channel,
+                                                      double background,
+                                                      const cv::Point2f& enclosing_center) {
+    std::optional<cv::Point2f> center;
+    try {
+        if (method == "enclosing_circle") {
+            center = enclosing_center;
+        } else if (method == "brightness_weighted") {
+            center = calculateBrightnessWeightedCenter(contour, green_channel, background);
+        } else if (method == "contour_centroid") {
+            const auto moments = cv::moments(contour);
+            if (std::isfinite(moments.m00) && moments.m00 > 0.0)
+                center = cv::Point2f{static_cast<float>(moments.m10 / moments.m00),
+                                     static_cast<float>(moments.m01 / moments.m00)};
+        } else {
+            const auto boundary = denseBoundary(contour);
+            if (method == "circle_fit") {
+                center = fitCircleCenter(boundary);
+            } else if (method == "ellipse_fit" && boundary.size() >= 5U) {
+                const auto ellipse = cv::fitEllipse(boundary);
+                if (std::isfinite(ellipse.size.width) && std::isfinite(ellipse.size.height) &&
+                    ellipse.size.width > 0.0 && ellipse.size.height > 0.0)
+                    center = ellipse.center;
+            }
+        }
+    } catch (const cv::Exception&) {
+        return std::nullopt;
+    }
+    const cv::Rect bounds = cv::boundingRect(contour);
+    if (!center || !std::isfinite(center->x) || !std::isfinite(center->y) || center->x < bounds.x ||
+        center->x > bounds.x + bounds.width - 1 || center->y < bounds.y ||
+        center->y > bounds.y + bounds.height - 1)
+        return std::nullopt;
+    return center;
+}
+
 } // namespace
 
 // clang-format off
@@ -92,6 +180,11 @@ bool MaskCleanupConfig::isConfigValid() const {
 }
 
 bool GreenLightDetectorConfig::isConfigValid() const {
+    if (center_method != "brightness_weighted" && center_method != "contour_centroid" &&
+        center_method != "enclosing_circle" && center_method != "circle_fit" &&
+        center_method != "ellipse_fit") {
+        return false;
+    }
     if (min_hue < 0.0 || min_hue > 179.0 ||
         max_hue < 0.0 || max_hue > 179.0 ||
         min_hue > max_hue) {
@@ -349,20 +442,17 @@ GreenLightDetector::extractCandidates(const cv::Mat& binary_mask,
             continue;
         }
 
-        // 最小外接圆中心只用于几何筛选。视线观测使用轮廓内、扣除局部背景后的
-        // 绿色亮度加权中心，以降低轮廓量化和局部光晕对中心的影响。权重退化时回退到
-        // 已验证有效的最小外接圆中心。
-        const cv::Point2f observation_center =
-            calculateBrightnessWeightedCenter(contour, green_channel, mean_outer_brightness)
-                .value_or(center_px);
+        const auto estimated_center = calculateObservationCenter(
+            config_.center_method, contour, green_channel, mean_outer_brightness, center_px);
+        const cv::Point2f observation_center = estimated_center.value_or(center_px);
 
         const double mean_radial_error_px = calculateMeanRadialError(contour, center_px, radius_px);
         const double fit_score = std::clamp(1.0 - mean_radial_error_px / radius_px, 0.0, 1.0);
 
-        candidates.push_back(GreenLightCandidate{observation_center, radius_px, area_px2,
-                                                 circularity, aspect_ratio, fill_ratio,
-                                                 mean_inner_brightness, mean_outer_brightness,
-                                                 contrast_ratio, mean_radial_error_px, fit_score});
+        candidates.push_back(GreenLightCandidate{
+            observation_center, radius_px, area_px2, circularity, aspect_ratio, fill_ratio,
+            mean_inner_brightness, mean_outer_brightness, contrast_ratio, mean_radial_error_px,
+            fit_score, !estimated_center.has_value()});
     }
 
     return CandidateExtractionResult{std::move(candidates), contours.size()};

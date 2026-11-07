@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <opencv2/core.hpp>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace dart_vision::camera {
@@ -23,6 +24,9 @@ struct MaskCleanupConfig {
 
 /// 绿色圆形光源的分割与候选筛选参数。
 struct GreenLightDetectorConfig {
+    /// 仅选择观测中心算法，不改变候选筛选、半径或得分的计算。
+    std::string center_method{"brightness_weighted"};
+
     double min_hue{35.0};        ///< HSV 色相下限，采用 OpenCV 的 [0, 179] 范围。
     double max_hue{95.0};        ///< HSV 色相上限，采用 OpenCV 的 [0, 179] 范围。
     double min_saturation{45.0}; ///< HSV 饱和度下限，范围为 [0, 255]。
@@ -48,7 +52,7 @@ struct GreenLightDetectorConfig {
 
 /// 通过全部筛选条件的单个光源候选。
 struct GreenLightCandidate {
-    cv::Point2f center_px; ///< 候选区域内扣除局部背景后的绿色亮度加权中心。
+    cv::Point2f center_px; ///< center_method 选定的原图亚像素中心。
     double radius_px{};    ///< 最小外接圆的半径。
     double area_px2{};     ///< 轮廓面积。
 
@@ -62,6 +66,7 @@ struct GreenLightCandidate {
 
     double mean_radial_error_px{}; ///< 轮廓点到拟合圆的平均径向误差。
     double fit_score{}; ///< 圆拟合得分，范围为 [0, 1]，越大表示拟合越好。
+    bool center_fallback{}; ///< 所选中心算法退化时，使用已验证的最小外接圆中心。
 };
 
 /// 一帧图像的完整检测结果。

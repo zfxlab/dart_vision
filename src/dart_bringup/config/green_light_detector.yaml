@@ -12,6 +12,10 @@
       outpost:
         modes: [0]
         ambiguity_margin: 0.05
+        center:
+          # 可运行时切换：brightness_weighted / contour_centroid / enclosing_circle /
+          # circle_fit / ellipse_fit；退化时回退到最小外接圆中心并计入诊断。
+          method: brightness_weighted
         segmentation:
           min_hue: 35.0
           max_hue: 95.0
@@ -37,6 +41,8 @@
       base:
         modes: [1, 2, 3, 4]
         ambiguity_margin: 0.05
+        center:
+          method: brightness_weighted
         segmentation:
           min_hue: 35.0
           max_hue: 95.0

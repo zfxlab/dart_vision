@@ -36,4 +36,13 @@ rclcpp_components_register_node(dart_camera_component
 install(TARGETS dart_camera_core dart_camera_component ARCHIVE DESTINATION lib LIBRARY DESTINATION lib RUNTIME DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_center_methods test/test_center_methods.cpp)
+  target_link_libraries(test_center_methods dart_camera_core)
+  ament_add_gtest(test_center_parameters test/test_center_parameters.cpp)
+  target_link_libraries(test_center_parameters dart_camera_component)
+  ament_target_dependencies(test_center_parameters rclcpp)
+endif()
+
 ament_package()
