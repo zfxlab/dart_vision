@@ -342,6 +342,7 @@ ros2 param set /right_camera/green_light_detector profiles.base.center.method ci
 | `/left_camera/camera_info`、`/right_camera/camera_info` | `sensor_msgs/msg/CameraInfo` | 与图像同时间戳的相机参数 |
 | `/left_camera/detection`、`/right_camera/detection` | `dart_interfaces/msg/GreenLightDetection` | 原始目标单位视线及绿灯中心像素坐标，供双目节点使用 |
 | `/stereo_target` | `dart_interfaces/msg/StereoTarget` | 双目中心坐标系中的三维目标 |
+| `/controller_logger` | `dart_interfaces/msg/ControllerLogger` | 下位机日志包完整业务字段及主机接收时间戳 |
 | `/controller_state` | `dart_interfaces/msg/ControllerState` | 目标模式、飞镖偏角和电机反馈角 |
 | `/aim_command` | `dart_interfaces/msg/AimCommand` | 离轨点水平参考系中的偏转角、水平距离和有符号垂直高度差 |
 | `/joint_states` | `sensor_msgs/msg/JointState` | 校正后的发射架关节角 |
@@ -475,3 +476,34 @@ C++ 格式和静态分析规则分别位于 `.clang-format` 和 `.clang-tidy`。
 ## License
 
 本项目使用 [MIT License](LICENSE)。第三方子模块遵循各自仓库中的许可证。
+
+### 实时查看下位机日志
+
+运行 `vision_system.launch.py` 时，串口节点将每个校验通过的 `0xD5` 日志包发布到
+`/controller_logger`，无需开启 DEBUG。协议对齐电控端的 24 字节 packed 格式，包含 13 个单字节状态字段、2 个 float32 拉力值（kg）、
+帧头和 CRC16；没有 vision_stable_state 字段。消息包含全部业务字段；帧头和 CRC 不作为业务字段发布。
+时间戳为主机解析有效帧时的 ROS 时间，并非下位机采样时间。原有 DEBUG 文本仍按 2 秒限频输出，
+话题发布不受该限频影响。
+
+编译更新并重新启动系统：
+
+```bash
+colcon build --packages-select dart_interfaces dart_serial dart_bringup
+source install/setup.bash
+ros2 launch dart_bringup vision_system.launch.py
+```
+
+另开终端，在工作空间中执行：
+
+```bash
+source install/setup.bash
+ros2 topic echo /controller_logger --qos-reliability best_effort
+# 只查看左侧拉力：
+ros2 topic echo /controller_logger --field string_l_force --qos-reliability best_effort
+```
+
+话题使用 SensorDataQoS（best effort、深度 5），优先提供最新数据；慢订阅端可能丢帧。
+实际频率取决于下位机日志发送频率。若没有输出，可查看 `/diagnostics` 中的
+`logger_frames_total` 是否增长。默认 `full` 录包配置已包含该话题，
+通过 `start_recording:=true` 启用；`inputs` 配置不包含日志话题。
+不要额外启动第二个串口节点。

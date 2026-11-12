@@ -52,7 +52,6 @@ struct LoggerPacket {
     std::uint8_t door_status{};
     std::uint8_t last_light_detected{};
     std::uint8_t vision_light_detected{};
-    std::uint8_t vision_stable_state{};
     std::uint8_t door_session_active{};
     std::uint8_t autoaim_allow{};
     std::uint8_t door_close_inhibit_active{};
@@ -77,13 +76,13 @@ static_assert(offsetof(SendPacket, horizontal_distance_m) == 6,
 static_assert(offsetof(SendPacket, vertical_difference_m) == 10,
               "SendPacket vertical_difference_m offset mismatch");
 static_assert(offsetof(SendPacket, crc) == 14, "SendPacket CRC offset mismatch");
-static_assert(sizeof(LoggerPacket) == 25, "LoggerPacket protocol size mismatch");
+static_assert(sizeof(LoggerPacket) == 24, "LoggerPacket protocol size mismatch");
 static_assert(offsetof(LoggerPacket, state) == 1, "LoggerPacket state offset mismatch");
-static_assert(offsetof(LoggerPacket, string_l_force) == 15,
+static_assert(offsetof(LoggerPacket, string_l_force) == 14,
               "LoggerPacket left force offset mismatch");
-static_assert(offsetof(LoggerPacket, string_r_force) == 19,
+static_assert(offsetof(LoggerPacket, string_r_force) == 18,
               "LoggerPacket right force offset mismatch");
-static_assert(offsetof(LoggerPacket, checksum) == 23, "LoggerPacket checksum offset mismatch");
+static_assert(offsetof(LoggerPacket, checksum) == 22, "LoggerPacket checksum offset mismatch");
 
 /**
  * @brief 串口协议包类型。

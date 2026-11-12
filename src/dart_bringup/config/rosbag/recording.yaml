@@ -48,6 +48,7 @@ recording:
         - /stereo_target
         - /aim_command
         - /joint_states
+        - /controller_logger
         - /diagnostics
         - /rosout
         - /parameter_events

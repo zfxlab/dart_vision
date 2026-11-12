@@ -17,6 +17,7 @@
 
 #include "dart_interfaces/msg/aim_command.hpp"
 #include "dart_interfaces/msg/controller_state.hpp"
+#include "dart_interfaces/msg/controller_logger.hpp"
 #include "dart_serial/packet_parser.hpp"
 #include "dart_serial/serial_port.hpp"
 
@@ -53,6 +54,7 @@ class SerialNode : public rclcpp::Node {
 
     std::string send_topic_;
     std::string receive_topic_;
+    std::string logger_topic_;
     std::string joint_state_topic_;
     std::string yaw_joint_name_;
 
@@ -89,6 +91,7 @@ class SerialNode : public rclcpp::Node {
 
     rclcpp::Subscription<dart_interfaces::msg::AimCommand>::SharedPtr send_subscription_;
     rclcpp::Publisher<dart_interfaces::msg::ControllerState>::SharedPtr receive_publisher_;
+    rclcpp::Publisher<dart_interfaces::msg::ControllerLogger>::SharedPtr logger_publisher_;
     rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_publisher_;
     rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diagnostics_publisher_;
     rclcpp::TimerBase::SharedPtr diagnostics_timer_;

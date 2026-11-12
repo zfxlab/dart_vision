@@ -83,9 +83,11 @@ SerialNode::SerialNode(const rclcpp::NodeOptions& options)
 
     send_topic_ = get_parameter("send_topic").as_string();
     receive_topic_ = get_parameter("receive_topic").as_string();
+    logger_topic_ = get_parameter("logger_topic").as_string();
     joint_state_topic_ = get_parameter("joint_state_topic").as_string();
     yaw_joint_name_ = get_parameter("yaw_joint_name").as_string();
-    if (send_topic_.empty() || receive_topic_.empty() || joint_state_topic_.empty() ||
+    if (send_topic_.empty() || receive_topic_.empty() || logger_topic_.empty() ||
+        joint_state_topic_.empty() ||
         yaw_joint_name_.empty()) {
         throw std::invalid_argument("Serial topic and joint names must not be empty");
     }
@@ -93,6 +95,8 @@ SerialNode::SerialNode(const rclcpp::NodeOptions& options)
     serial_port_ = std::make_unique<SerialPort>(serial_config_);
     receive_publisher_ = create_publisher<dart_interfaces::msg::ControllerState>(
         receive_topic_, rclcpp::SensorDataQoS());
+    logger_publisher_ = create_publisher<dart_interfaces::msg::ControllerLogger>(
+        logger_topic_, rclcpp::SensorDataQoS());
     joint_state_publisher_ =
         create_publisher<sensor_msgs::msg::JointState>(joint_state_topic_, rclcpp::SensorDataQoS());
     diagnostics_publisher_ =
@@ -146,6 +150,7 @@ void SerialNode::declareParameters() {
     declare_parameter<int>("reconnect_interval_ms", 1000);
     declare_parameter<std::string>("send_topic", "aim_command");
     declare_parameter<std::string>("receive_topic", "controller_state");
+    declare_parameter<std::string>("logger_topic", "controller_logger");
     declare_parameter<std::string>("joint_state_topic", "joint_states");
     declare_parameter<std::string>("yaw_joint_name", "launcher_yaw_joint");
 }
@@ -247,12 +252,31 @@ void SerialNode::processFrame(const std::vector<std::uint8_t>& frame) {
                                  "A parser-approved logger frame failed packet decoding");
             return;
         }
+        dart_interfaces::msg::ControllerLogger message;
+        message.header.stamp = now();
+        message.state = packet->state;
+        message.prepare_state = packet->prepare_state;
+        message.launch_station_status = packet->launch_station_status;
+        message.is_fire_finished = packet->is_fire_finished;
+        message.fired_count_this_open = packet->fired_count_this_open;
+        message.current_shot_number = packet->current_shot_number;
+        message.current_dart_id = packet->current_dart_id;
+        message.door_status = packet->door_status;
+        message.last_light_detected = packet->last_light_detected;
+        message.vision_light_detected = packet->vision_light_detected;
+        message.door_session_active = packet->door_session_active;
+        message.autoaim_allow = packet->autoaim_allow;
+        message.door_close_inhibit_active = packet->door_close_inhibit_active;
+        message.string_l_force = packet->string_l_force;
+        message.string_r_force = packet->string_r_force;
+        logger_publisher_->publish(message);
+
         ++logger_frames_total_;
         last_receive_steady_ns_.store(steadyNowNanoseconds());
 
         RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), kControllerDebugThrottleMs,
                               "Controller logger: state=%u prepare=%u station=%u fire_finished=%u "
-                              "shot=%u dart=%u door=%u vision_light=%u stable=%u autoaim=%u "
+                              "shot=%u dart=%u door=%u vision_light=%u autoaim=%u "
                               "force_L=%.3f force_R=%.3f",
                               static_cast<unsigned int>(packet->state),
                               static_cast<unsigned int>(packet->prepare_state),
@@ -262,7 +286,6 @@ void SerialNode::processFrame(const std::vector<std::uint8_t>& frame) {
                               static_cast<unsigned int>(packet->current_dart_id),
                               static_cast<unsigned int>(packet->door_status),
                               static_cast<unsigned int>(packet->vision_light_detected),
-                              static_cast<unsigned int>(packet->vision_stable_state),
                               static_cast<unsigned int>(packet->autoaim_allow),
                               static_cast<double>(packet->string_l_force),
                               static_cast<double>(packet->string_r_force));

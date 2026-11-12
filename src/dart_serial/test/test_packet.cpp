@@ -56,3 +56,32 @@ TEST(SendPacketProtocol, ClearsGeometryForClosedInvalidAndMalformedCommands) {
     packet.horizontal_distance_m = -1;
     EXPECT_EQ(encodeSendPacket(packet)[1], 2);
 }
+
+// 24-byte controller logger_t: no vision_stable_state byte.
+TEST(LoggerPacketProtocol, DecodesControllerWireLayoutAndRejectsBadFrames) {
+    std::vector<std::uint8_t> bytes{0xd5, 0x2, 0x3, 0x4, 0x1, 0x5, 0x6, 0x7, 0x8, 0x0, 0x9, 0x0, 0x1, 0x0, 0x0, 0x0, 0xa0, 0x3f, 0x0, 0x0, 0x20, 0xc0, 0xbd, 0x4b};
+    EXPECT_EQ(packetSizeFromHeader(0xD5), 24U);
+    const auto packet = decodeLoggerPacket(bytes);
+    ASSERT_TRUE(packet.has_value());
+    EXPECT_EQ(packet->state, 2);
+    EXPECT_EQ(packet->prepare_state, 3);
+    EXPECT_EQ(packet->launch_station_status, 4);
+    EXPECT_EQ(packet->is_fire_finished, 1);
+    EXPECT_EQ(packet->fired_count_this_open, 5);
+    EXPECT_EQ(packet->current_shot_number, 6);
+    EXPECT_EQ(packet->current_dart_id, 7);
+    EXPECT_EQ(packet->door_status, 8);
+    EXPECT_EQ(packet->last_light_detected, 0);
+    EXPECT_EQ(packet->vision_light_detected, 9);
+    EXPECT_EQ(packet->door_session_active, 0);
+    EXPECT_EQ(packet->autoaim_allow, 1);
+    EXPECT_EQ(packet->door_close_inhibit_active, 0);
+    EXPECT_FLOAT_EQ(packet->string_l_force, 1.25F);
+    EXPECT_FLOAT_EQ(packet->string_r_force, -2.5F);
+    bytes.back() ^= 0xff;
+    EXPECT_FALSE(decodeLoggerPacket(bytes).has_value());
+    bytes.back() ^= 0xff;
+    bytes.insert(bytes.begin() + 11, 0); // Previously assumed extra field.
+    appendCRC16(bytes.data(), bytes.size());
+    EXPECT_FALSE(decodeLoggerPacket(bytes).has_value());
+}
