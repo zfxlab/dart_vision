@@ -133,6 +133,56 @@ ros2 launch dart_bringup lidar_debug.launch.py
 ros2 launch dart_bringup camera_system.launch.py --show-args
 ```
 
+### 电控无反馈时模拟运行
+
+电控暂未发送数据时，可以直接发布模拟 ROS 话题，运行视觉和瞄准流程。
+`/controller_state` 提供目标模式、飞镖偏角和电机 yaw，`/joint_states` 提供发射架关节角以更新 TF。
+`/controller_logger` 仅用于调试和录包，不能替代这两个输入。
+
+在工作空间根目录打开以下终端，每个终端均需加载环境。终端 1 启动视觉系统并关闭串口节点：
+
+```bash
+source install/setup.bash
+ros2 launch dart_bringup vision_system.launch.py start_serial:=false
+```
+
+终端 2 以 50 Hz 发布控制器状态，模拟前哨站模式、零飞镖偏角和零电机 yaw：
+
+```bash
+source install/setup.bash
+ros2 topic pub -r 50 /controller_state \
+  dart_interfaces/msg/ControllerState \
+  "{header: auto, target_mode: 1, dart_offset_rad: 0.0, launcher_yaw_rad: 0.0}"
+```
+
+`header: auto` 会在每次发布时填入当前时间，避免控制器状态因时间戳过期而失效。
+本例使用默认的系统时间，不设置 `use_sim_time:=true`。
+
+终端 3 以 50 Hz 发布发射架关节角：
+
+```bash
+source install/setup.bash
+ros2 topic pub -r 50 /joint_states \
+  sensor_msgs/msg/JointState \
+  "{header: auto, name: ['launcher_yaw_joint'], position: [0.0]}"
+```
+
+角度单位均为弧度。当前串口配置的方向系数为 1、零点为 0，因此 `position` 与
+`launcher_yaw_rad` 保持一致。若修改了这两个配置，模拟关节角应按
+`motor_to_joint_sign * (launcher_yaw_rad - motor_zero_rad)` 计算。
+
+终端 4 查看瞄准输出：
+
+```bash
+source install/setup.bash
+ros2 topic echo /aim_command
+```
+
+有效瞄准输出仍需要相机检测、双目结果和 TF 正常。此方式绕过串口，不验证分帧或 CRC，
+也不会向电控发送瞄准指令。若要验证串口链路，应使用虚拟串口发送协议帧。
+恢复真实电控反馈前，先用 Ctrl+C 停止两个模拟发布器，再重新启动带串口节点的系统，
+避免真实与模拟数据同时发布。
+
 ### 数据录制
 
 项目使用 ROS 2 自带的 rosbag2 录制运行数据，配置统一保存在
