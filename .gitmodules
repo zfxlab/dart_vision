@@ -9,3 +9,6 @@
 [submodule "third_party/livox_ros2_driver"]
 	path = third_party/livox_ros2_driver
 	url = git@github.com:zfxlab/livox_ros2_driver.git
+[submodule "third_party/stereo_calib"]
+	path = third_party/stereo_calib
+	url = git@github.com:zfxlab/stereo_calib.git
