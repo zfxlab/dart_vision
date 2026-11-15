@@ -13,6 +13,7 @@
 #include <unordered_map>
 
 #include "dart_camera/green_light_detector.hpp"
+#include "dart_camera/pixel_center_ema.hpp"
 #include "dart_interfaces/msg/controller_state.hpp"
 #include "dart_interfaces/msg/green_light_detection.hpp"
 namespace dart_vision::camera {
@@ -63,6 +64,8 @@ class GreenLightDetectorNode : public rclcpp::Node {
     std::unordered_map<std::uint8_t, std::string> mode_profiles_;
     std::optional<std::string> active_profile_;
     std::optional<std::uint8_t> active_target_mode_;
+    // Protected together with the active detector by profiles_mutex_.
+    PixelCenterEma center_filter_;
     rclcpp::Subscription<dart_interfaces::msg::ControllerState>::SharedPtr controller_subscription_;
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_subscription_;
     rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_subscription_;

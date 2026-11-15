@@ -14,7 +14,8 @@ geometry_msgs/Vector3 unit_ray
 # 圆拟合得分，范围为 [0,1]，不表示经过标定的概率。
 float32 score
 
-# 原始输入图像中的亚像素中心，未去畸变，单位 px。
+# 输入图像坐标系中的亚像素中心，未去畸变，单位 px。
+# 是否经过 EMA 由 center_filter.enabled 决定；unit_ray 始终由本中心计算。
 # 原点为左上角，x 向右、y 向下；仅 DETECTED 有效，其余状态为 0。
 float32 center_x_px
 float32 center_y_px

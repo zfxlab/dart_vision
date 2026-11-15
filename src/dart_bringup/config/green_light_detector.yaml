@@ -5,6 +5,14 @@
     camera_info_topic: camera_info
     controller_topic: /controller_state
 
+    # 按图像时间戳计算 alpha = 1 - exp(-dt / tau)，中心滤波后重新计算单位视线。
+    # tau=1s 时理想阶跃约 3s 达到 95%；运行时改参会重置滤波器。
+    center_filter:
+      enabled: true
+      tau_x_s: 1.0
+      tau_y_s: 1.0
+      reset_gap_s: 2.0
+
     # target_mode=0 使用前哨站配置，其他现有模式使用基地配置。
     # 两套参数当前保持一致，可在完成前哨站采样后分别调整。
     profiles:

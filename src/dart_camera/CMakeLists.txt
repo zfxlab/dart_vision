@@ -20,6 +20,7 @@ find_package(OpenCV REQUIRED)
 add_library(dart_camera_core
   src/green_light_detector.cpp
   src/bearing_solver.cpp
+  src/pixel_center_ema.cpp
 )
 set_target_properties(dart_camera_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(dart_camera_core PUBLIC include ${OpenCV_INCLUDE_DIRS})
@@ -43,6 +44,11 @@ if(BUILD_TESTING)
   ament_add_gtest(test_center_parameters test/test_center_parameters.cpp)
   target_link_libraries(test_center_parameters dart_camera_component)
   ament_target_dependencies(test_center_parameters rclcpp)
+  ament_add_gtest(test_pixel_center_ema test/test_pixel_center_ema.cpp)
+  target_link_libraries(test_pixel_center_ema dart_camera_core)
+  ament_add_gtest(test_center_filter_node test/test_center_filter_node.cpp)
+  target_link_libraries(test_center_filter_node dart_camera_component)
+  ament_target_dependencies(test_center_filter_node rclcpp)
 endif()
 
 ament_package()

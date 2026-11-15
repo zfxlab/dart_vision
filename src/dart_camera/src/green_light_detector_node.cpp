@@ -80,12 +80,15 @@ GreenLightDetectorNode::GreenLightDetectorNode(const rclcpp::NodeOptions& option
       previous_diagnostic_time_(std::chrono::steady_clock::now()) {
     declareParameters();
     loadProfiles();
+    center_filter_.configure({get_parameter("center_filter.enabled").as_bool(),
+                              get_parameter("center_filter.tau_x_s").as_double(),
+                              get_parameter("center_filter.tau_y_s").as_double(),
+                              get_parameter("center_filter.reset_gap_s").as_double()});
 
     image_topic_ = get_parameter("image_topic").as_string();
     detection_topic_ = get_parameter("detection_topic").as_string();
     if (image_topic_.empty() || detection_topic_.empty())
-        throw std::invalid_argument(
-            "Detector input, raw output and filtered output topics invalid");
+        throw std::invalid_argument("Detector input and output topics must not be empty");
 
     detection_publisher_ = create_publisher<dart_interfaces::msg::GreenLightDetection>(
         detection_topic_, rclcpp::SensorDataQoS());
@@ -96,6 +99,18 @@ GreenLightDetectorNode::GreenLightDetectorNode(const rclcpp::NodeOptions& option
     camera_info_subscription_ = create_subscription<sensor_msgs::msg::CameraInfo>(
         get_parameter("camera_info_topic").as_string(), rclcpp::SensorDataQoS(),
         [this](sensor_msgs::msg::CameraInfo::ConstSharedPtr info) {
+            if (latest_camera_info_ &&
+                (info->header.frame_id != latest_camera_info_->header.frame_id ||
+                 info->width != latest_camera_info_->width ||
+                 info->height != latest_camera_info_->height || info->k != latest_camera_info_->k ||
+                 info->d != latest_camera_info_->d ||
+                 info->distortion_model != latest_camera_info_->distortion_model ||
+                 info->binning_x != latest_camera_info_->binning_x ||
+                 info->binning_y != latest_camera_info_->binning_y ||
+                 info->roi != latest_camera_info_->roi)) {
+                std::lock_guard<std::mutex> lock(profiles_mutex_);
+                center_filter_.reset();
+            }
             latest_camera_info_ = std::move(info);
             processPendingImages();
         });
@@ -126,6 +141,11 @@ void GreenLightDetectorNode::declareParameters() {
     declare_parameter<std::string>("detection_topic", "detection", read_only);
     declare_parameter<std::string>("camera_info_topic", "camera_info", read_only);
     declare_parameter<std::string>("controller_topic", "/controller_state", read_only);
+    const PixelCenterEmaConfig filter_defaults;
+    declare_parameter<bool>("center_filter.enabled", filter_defaults.enabled);
+    declare_parameter<double>("center_filter.tau_x_s", filter_defaults.tau_x_s);
+    declare_parameter<double>("center_filter.tau_y_s", filter_defaults.tau_y_s);
+    declare_parameter<double>("center_filter.reset_gap_s", filter_defaults.reset_gap_s);
     const auto profile_names = declare_parameter<std::vector<std::string>>(
         "profiles.names", std::vector<std::string>{"default"}, read_only);
     if (profile_names.empty())
@@ -233,11 +253,9 @@ void GreenLightDetectorNode::loadProfiles() {
 
 rcl_interfaces::msg::SetParametersResult
 GreenLightDetectorNode::onParametersChanged(const std::vector<rclcpp::Parameter>& parameters) {
-    std::unordered_map<std::string, DetectorProfile> updated_profiles;
-    {
-        std::lock_guard<std::mutex> lock(profiles_mutex_);
-        updated_profiles = profiles_;
-    }
+    std::lock_guard<std::mutex> lock(profiles_mutex_);
+    auto updated_profiles = profiles_;
+    auto filter_config = center_filter_.config();
     std::unordered_set<std::string> changed_profiles;
 
     try {
@@ -247,6 +265,21 @@ GreenLightDetectorNode::onParametersChanged(const std::vector<rclcpp::Parameter>
                 name == "controller_topic" || name == "profiles.names" ||
                 (name.rfind("profiles.", 0) == 0 && endsWith(name, ".modes"))) {
                 return parameterFailure(name + " cannot be changed while the node is running");
+            }
+            if (name == "center_filter.enabled") {
+                filter_config.enabled = parameter.as_bool();
+                continue;
+            }
+            if (name == "center_filter.tau_x_s" || name == "center_filter.tau_y_s" ||
+                name == "center_filter.reset_gap_s") {
+                const double value = parameter.as_double();
+                if (name == "center_filter.tau_x_s")
+                    filter_config.tau_x_s = value;
+                else if (name == "center_filter.tau_y_s")
+                    filter_config.tau_y_s = value;
+                else
+                    filter_config.reset_gap_s = value;
+                continue;
             }
 
             for (auto& [profile_name, profile] : updated_profiles) {
@@ -301,6 +334,8 @@ GreenLightDetectorNode::onParametersChanged(const std::vector<rclcpp::Parameter>
     } catch (const rclcpp::ParameterTypeException& error) {
         return parameterFailure(error.what());
     }
+    if (!filter_config.isValid())
+        return parameterFailure("EMA time constants and reset gap must be finite and positive");
 
     for (const auto& profile_name : changed_profiles) {
         auto& profile = updated_profiles.at(profile_name);
@@ -309,7 +344,6 @@ GreenLightDetectorNode::onParametersChanged(const std::vector<rclcpp::Parameter>
         profile.detector = std::make_shared<GreenLightDetector>(profile.config);
     }
     if (!changed_profiles.empty()) {
-        std::lock_guard<std::mutex> lock(profiles_mutex_);
         for (const auto& name : changed_profiles) {
             if (profiles_.at(name).config.center_method !=
                 updated_profiles.at(name).config.center_method)
@@ -317,7 +351,10 @@ GreenLightDetectorNode::onParametersChanged(const std::vector<rclcpp::Parameter>
                             updated_profiles.at(name).config.center_method.c_str());
         }
         profiles_ = std::move(updated_profiles);
+        if (active_profile_ && changed_profiles.count(*active_profile_))
+            center_filter_.reset();
     }
+    center_filter_.configure(filter_config);
 
     rcl_interfaces::msg::SetParametersResult result;
     result.successful = true;
@@ -332,6 +369,7 @@ void GreenLightDetectorNode::controllerCallback(
             std::lock_guard<std::mutex> lock(profiles_mutex_);
             active_profile_.reset();
             active_target_mode_.reset();
+            center_filter_.reset();
         }
         pending_images_.clear();
         RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), kWarningThrottleMs,
@@ -346,6 +384,8 @@ void GreenLightDetectorNode::controllerCallback(
         std::lock_guard<std::mutex> lock(profiles_mutex_);
         profile_changed = !active_profile_ || *active_profile_ != selected->second;
         mode_changed = !active_target_mode_ || *active_target_mode_ != controller->target_mode;
+        if (mode_changed)
+            center_filter_.reset();
         active_profile_ = selected->second;
         active_target_mode_ = controller->target_mode;
     }
@@ -387,13 +427,14 @@ void GreenLightDetectorNode::processImage(
     const sensor_msgs::msg::CameraInfo::ConstSharedPtr& info) {
     using Detection = dart_interfaces::msg::GreenLightDetection;
     const auto processing_start = std::chrono::steady_clock::now();
-    Detection raw_message;
-    raw_message.header = image->header;
+    Detection message;
+    message.header = image->header;
     std::shared_ptr<GreenLightDetector> detector;
     double ambiguity_margin = 0.0;
     bool center_fallback = false;
+    // Keep detector selection, EMA state and parameter changes consistent for this frame.
+    std::unique_lock<std::mutex> profile_lock(profiles_mutex_);
     {
-        std::lock_guard<std::mutex> lock(profiles_mutex_);
         if (active_profile_) {
             const auto profile = profiles_.find(*active_profile_);
             if (profile != profiles_.end()) {
@@ -410,10 +451,10 @@ void GreenLightDetectorNode::processImage(
         auto& candidates = result.candidates;
         std::sort(candidates.begin(), candidates.end(),
                   [](const auto& a, const auto& b) { return a.fit_score > b.fit_score; });
-        raw_message.status = result.contours_count == 0 ? Detection::CLOSED : Detection::NO_TARGET;
+        message.status = result.contours_count == 0 ? Detection::CLOSED : Detection::NO_TARGET;
         if (candidates.size() > 1 &&
             candidates[0].fit_score - candidates[1].fit_score < ambiguity_margin) {
-            raw_message.status = Detection::NO_TARGET;
+            message.status = Detection::NO_TARGET;
         } else if (!candidates.empty()) {
             const auto& target = candidates.front();
             if (!info || info->header.frame_id.empty() ||
@@ -429,28 +470,33 @@ void GreenLightDetectorNode::processImage(
             BearingSolverConfig config;
             config.camera_matrix = info->k;
             config.distortion_coefficients = info->d;
-            const auto ray = BearingSolver(config).calculateUnitBearing(target.center_px);
+            const auto center = center_filter_.update(
+                target.center_px, rclcpp::Time(image->header.stamp).nanoseconds());
+            const auto ray = BearingSolver(config).calculateUnitBearing(center);
             if (!ray)
                 throw std::runtime_error("Cannot calculate target unit ray");
-            raw_message.status = Detection::DETECTED;
-            raw_message.unit_ray.x = (*ray)[0];
-            raw_message.unit_ray.y = (*ray)[1];
-            raw_message.unit_ray.z = (*ray)[2];
-            raw_message.center_x_px = target.center_px.x;
-            raw_message.center_y_px = target.center_px.y;
-            raw_message.score = target.fit_score;
+            message.status = Detection::DETECTED;
+            message.score = target.fit_score;
+            message.center_x_px = center.x;
+            message.center_y_px = center.y;
+            message.unit_ray.x = (*ray)[0];
+            message.unit_ray.y = (*ray)[1];
+            message.unit_ray.z = (*ray)[2];
             center_fallback = target.center_fallback;
         }
     } catch (const std::exception& e) {
-        raw_message.status = Detection::ERROR;
-        raw_message.unit_ray = geometry_msgs::msg::Vector3{};
-        raw_message.center_x_px = 0.0F;
-        raw_message.center_y_px = 0.0F;
-        raw_message.score = 0.0;
+        message.status = Detection::ERROR;
+        message.unit_ray = geometry_msgs::msg::Vector3{};
+        message.center_x_px = 0.0F;
+        message.center_y_px = 0.0F;
+        message.score = 0.0;
         RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), kWarningThrottleMs, "%s", e.what());
     }
 
-    detection_publisher_->publish(raw_message);
+    if (message.status != Detection::DETECTED)
+        center_filter_.reset();
+    profile_lock.unlock();
+    detection_publisher_->publish(message);
 
     const auto processing_end = std::chrono::steady_clock::now();
     const auto processing_time =
@@ -470,7 +516,7 @@ void GreenLightDetectorNode::processImage(
         if (statistics.capture_to_detection_ms.size() > kLatencyWindowSize)
             statistics.capture_to_detection_ms.pop_front();
     }
-    switch (raw_message.status) {
+    switch (message.status) {
     case Detection::DETECTED:
         ++statistics.detected_total;
         ++statistics.detected_interval;
@@ -540,8 +586,10 @@ void GreenLightDetectorNode::publishDiagnostics() {
             : std::chrono::duration<double>(current_time - statistics.last_processed_time).count();
     std::string active_profile = "none";
     std::string center_method = "none";
+    PixelCenterEmaConfig filter_config;
     {
         std::lock_guard<std::mutex> lock(profiles_mutex_);
+        filter_config = center_filter_.config();
         if (active_profile_) {
             active_profile = *active_profile_;
             center_method = profiles_.at(*active_profile_).config.center_method;
@@ -579,6 +627,14 @@ void GreenLightDetectorNode::publishDiagnostics() {
         keyValue("last_processed_age_sec", std::to_string(last_processed_age_seconds)));
     status.values.push_back(keyValue("active_profile", active_profile));
     status.values.push_back(keyValue("center_method", center_method));
+    status.values.push_back(
+        keyValue("center_filter_enabled", filter_config.enabled ? "true" : "false"));
+    status.values.push_back(
+        keyValue("center_filter_tau_x_s", std::to_string(filter_config.tau_x_s)));
+    status.values.push_back(
+        keyValue("center_filter_tau_y_s", std::to_string(filter_config.tau_y_s)));
+    status.values.push_back(
+        keyValue("center_filter_reset_gap_s", std::to_string(filter_config.reset_gap_s)));
     status.values.push_back(
         keyValue("center_fallback_total", std::to_string(statistics.center_fallback_total)));
     status.values.push_back(

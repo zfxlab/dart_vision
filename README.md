@@ -378,6 +378,36 @@ ros2 param set /right_camera/green_light_detector profiles.base.center.method ci
 不同方法可能有固定中心偏移，之前按亮度加权中心拟合的临时内外参不能直接作为其他方法的
 精度依据；比较时同时记录均值偏移、1 秒窗口稳定性、检测率和回退计数。
 
+检测节点默认对像素中心应用 EMA，再由滤波中心计算单位视线。`center_filter` 为每个
+相机节点共用的配置，适用于所有目标 profile：
+
+| 参数 | 默认值 | 含义 |
+| --- | --- | --- |
+| `center_filter.enabled` | `true` | 是否启用 EMA；关闭时 `detection` 发布原始中心及对应视线 |
+| `center_filter.tau_x_s` | `1.0` | X 方向时间常数，单位秒，必须有限且大于 0 |
+| `center_filter.tau_y_s` | `1.0` | Y 方向时间常数，单位秒，必须有限且大于 0 |
+| `center_filter.reset_gap_s` | `2.0` | 相邻有效图像间隔超过此值时重新初始化，必须有限且大于 0 |
+
+滤波使用图像时间戳的实际间隔 `dt`，每轴计算 `alpha = 1 - exp(-dt / tau)` 和
+`center = previous + alpha * (observation - previous)`，首个有效点直接作为初值。
+默认时间常数适用于相机和目标基本静止的工况，理想阶跃约 3 秒达到变化量的 95%；
+EMA 能减小短时抖动，但不能消除缓慢漂移。左右相机应采用相同参数，运动工况需要重新评估
+响应滞后及双目误差。消息仍保留原图时间戳，处理耗时指标不包含滤波引入的响应滞后。
+
+任一非 `DETECTED` 帧、目标模式变化（包括同一 profile 内的模式切换）、相机内参或图像
+几何变化、重复/倒退时间戳和超时都会重置历史。修改当前 profile 的检测参数或改变 EMA
+配置也会重置历史；重捕获首帧直接输出新中心，不延用旧目标，也不在丢失期间输出旧坐标。
+仅靠有效检测无法判断未伴随模式变化的目标身份切换。
+
+这些 EMA 参数支持运行时修改。例如暂时关闭左相机滤波用于对照：
+
+```bash
+ros2 param set /left_camera/green_light_detector center_filter.enabled false
+```
+
+持久设置写入 `src/dart_bringup/config/green_light_detector.yaml`。对照中心算法或采集原始
+抖动时，将 `center_filter.enabled` 设为 `false`。检测结果统一通过 `detection` 发布。
+
 当前相机清单将 `00DA1923275` 配置为左相机，将 `00DA1923281` 配置为右相机。
 部署前必须确认实机序列号、左右安装位置和对应标定文件一致。
 
@@ -390,17 +420,17 @@ ros2 param set /right_camera/green_light_detector profiles.base.center.method ci
 | --- | --- | --- |
 | `/left_camera/image_raw`、`/right_camera/image_raw` | `sensor_msgs/msg/Image` | 左右原始图像 |
 | `/left_camera/camera_info`、`/right_camera/camera_info` | `sensor_msgs/msg/CameraInfo` | 与图像同时间戳的相机参数 |
-| `/left_camera/detection`、`/right_camera/detection` | `dart_interfaces/msg/GreenLightDetection` | 原始目标单位视线及绿灯中心像素坐标，供双目节点使用 |
+| `/left_camera/detection`、`/right_camera/detection` | `dart_interfaces/msg/GreenLightDetection` | EMA 后的绿灯中心及对应单位视线，供双目节点使用；关闭 EMA 时为原始值 |
 | `/stereo_target` | `dart_interfaces/msg/StereoTarget` | 双目中心坐标系中的三维目标 |
 | `/controller_logger` | `dart_interfaces/msg/ControllerLogger` | 下位机日志包完整业务字段及主机接收时间戳 |
 | `/controller_state` | `dart_interfaces/msg/ControllerState` | 目标模式、飞镖偏角和电机反馈角 |
 | `/aim_command` | `dart_interfaces/msg/AimCommand` | 离轨点水平参考系中的偏转角、水平距离和有符号垂直高度差 |
 | `/joint_states` | `sensor_msgs/msg/JointState` | 校正后的发射架关节角 |
 
-检测节点不进行时间滤波。消息中的 `center_x_px`、`center_y_px` 为输入图像上未去畸变的亚像素中心，
+消息中的 `center_x_px`、`center_y_px` 为输入图像坐标系中未去畸变的亚像素中心，
 仅在 `status == DETECTED` 时有效，其余状态为 0；不要用坐标是否为零判断有效性。
-录包回放需要使用与包内数据一致的消息类型定义。
-历史 Kalman 实验保留在 `analysis/labplot/`，离线回放使用独立的 `kalman_replay.yaml`。
+`unit_ray` 始终由消息中的中心计算。录包回放需要使用与包内数据一致的
+消息类型定义；旧包中的 `detection` 可能为原始值，应结合采集时的配置解释。
 
 坐标约定：相机光学坐标系为 x 向右、y 向下、z 向前；双目中心和发射架参考系为
 x 向前、y 向左、z 向上。所有 yaw 和串口角度均使用弧度，并以向左为正。
@@ -462,7 +492,7 @@ ros2 topic echo /diagnostics
 与协议错误。视觉各阶段使用消息携带的 T0 统计累计延迟；最近 200 个有效样本分别给出
 平均值、最大值和 P95：
 
-- `capture_to_detection_*_ms`：T0 到单目检测和 Kalman 输出；
+- `capture_to_detection_*_ms`：T0 到单目检测和 EMA 输出，不包含滤波响应滞后；
 - `measurement_to_stereo_*_ms`：T0 到双目输出；
 - `measurement_to_aim_*_ms`：T0 到瞄准结果；
 - `measurement_to_serial_write_*_ms`：T0 到有效指令写入串口完成。
