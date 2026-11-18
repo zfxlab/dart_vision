@@ -113,8 +113,8 @@ def run_player(command, args, temporary):
             # Topics without a producer (e.g. /joint_states with description disabled)
             # are optional; algorithm outputs and replay inputs must be discovered.
             required &= set(args.topics) | {
-                "/left_camera/detection",
-                "/right_camera/detection",
+                "/top_camera/detection",
+                "/bottom_camera/detection",
                 "/stereo_target",
                 "/aim_command",
             }

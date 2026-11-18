@@ -58,8 +58,8 @@ StereoTriangulator::StereoTriangulator(const StereoTriangulatorConfig& config) :
 }
 
 std::optional<StereoTriangulationResult>
-StereoTriangulator::triangulate(const cv::Vec3d& left_origin, const cv::Vec3d& left_bearing,
-                                const cv::Vec3d& right_origin, const cv::Vec3d& right_bearing,
+StereoTriangulator::triangulate(const cv::Vec3d& top_origin, const cv::Vec3d& top_bearing,
+                                const cv::Vec3d& bottom_origin, const cv::Vec3d& bottom_bearing,
                                 StereoTriangulationDiagnostics* diagnostics) const noexcept {
     StereoTriangulationDiagnostics local_diagnostics;
     auto& diagnostic = diagnostics ? *diagnostics : local_diagnostics;
@@ -70,26 +70,26 @@ StereoTriangulator::triangulate(const cv::Vec3d& left_origin, const cv::Vec3d& l
         return std::nullopt;
     };
 
-    if (!finiteVector(left_origin) || !finiteVector(right_origin) || !finiteVector(left_bearing) ||
-        !finiteVector(right_bearing))
+    if (!finiteVector(top_origin) || !finiteVector(bottom_origin) || !finiteVector(top_bearing) ||
+        !finiteVector(bottom_bearing))
         return reject(StereoTriangulationRejection::non_finite_input);
 
-    diagnostic.baseline_m = cv::norm(left_origin - right_origin);
+    diagnostic.baseline_m = cv::norm(top_origin - bottom_origin);
     if (!std::isfinite(diagnostic.baseline_m) || diagnostic.baseline_m <= 1e-12)
         return reject(StereoTriangulationRejection::degenerate_baseline);
 
-    const double left_norm = cv::norm(left_bearing);
-    const double right_norm = cv::norm(right_bearing);
-    if (!std::isfinite(left_norm) || !std::isfinite(right_norm) || left_norm <= 0.0 ||
-        right_norm <= 0.0)
+    const double top_norm = cv::norm(top_bearing);
+    const double bottom_norm = cv::norm(bottom_bearing);
+    if (!std::isfinite(top_norm) || !std::isfinite(bottom_norm) || top_norm <= 0.0 ||
+        bottom_norm <= 0.0)
         return reject(StereoTriangulationRejection::invalid_bearing);
 
-    const cv::Vec3d left_direction = left_bearing / left_norm;
-    const cv::Vec3d right_direction = right_bearing / right_norm;
+    const cv::Vec3d top_direction = top_bearing / top_norm;
+    const cv::Vec3d bottom_direction = bottom_bearing / bottom_norm;
     // 三维交会锐角：平行与反平行均退化。叉积避免 1-dot^2 的相消误差。
-    const cv::Vec3d cross = left_direction.cross(right_direction);
+    const cv::Vec3d cross = top_direction.cross(bottom_direction);
     const double denominator = cross.dot(cross);
-    const double dot = std::clamp(left_direction.dot(right_direction), -1.0, 1.0);
+    const double dot = std::clamp(top_direction.dot(bottom_direction), -1.0, 1.0);
     const double ray_angle_rad = std::atan2(std::sqrt(denominator), std::abs(dot));
     diagnostic.ray_angle_deg = ray_angle_rad * 180.0 / kPi;
     if (denominator <= 1e-24)
@@ -97,26 +97,26 @@ StereoTriangulator::triangulate(const cv::Vec3d& left_origin, const cv::Vec3d& l
     if (ray_angle_rad < config_.min_ray_angle_deg * kPi / 180.0)
         return reject(StereoTriangulationRejection::ray_angle_too_small);
 
-    // 最小化 |o_L + s*d_L - o_R - t*d_R|^2；s/t 为沿单位射线的距离。
-    const cv::Vec3d offset = right_origin - left_origin;
-    diagnostic.left_distance_m = offset.cross(right_direction).dot(cross) / denominator;
-    diagnostic.right_distance_m = offset.cross(left_direction).dot(cross) / denominator;
-    if (!std::isfinite(diagnostic.left_distance_m) || !std::isfinite(diagnostic.right_distance_m))
+    // 最小化 |o_T + s*d_T - o_B - t*d_B|^2；s/t 为沿单位射线的距离。
+    const cv::Vec3d offset = bottom_origin - top_origin;
+    diagnostic.top_distance_m = offset.cross(bottom_direction).dot(cross) / denominator;
+    diagnostic.bottom_distance_m = offset.cross(top_direction).dot(cross) / denominator;
+    if (!std::isfinite(diagnostic.top_distance_m) || !std::isfinite(diagnostic.bottom_distance_m))
         return reject(StereoTriangulationRejection::non_finite_depth);
-    if (diagnostic.left_distance_m <= 0.0 || diagnostic.right_distance_m <= 0.0)
+    if (diagnostic.top_distance_m <= 0.0 || diagnostic.bottom_distance_m <= 0.0)
         return reject(StereoTriangulationRejection::behind_camera);
-    if (diagnostic.left_distance_m < config_.min_depth_m ||
-        diagnostic.right_distance_m < config_.min_depth_m)
+    if (diagnostic.top_distance_m < config_.min_depth_m ||
+        diagnostic.bottom_distance_m < config_.min_depth_m)
         return reject(StereoTriangulationRejection::depth_below_minimum);
 
-    const cv::Vec3d left_point = left_origin + diagnostic.left_distance_m * left_direction;
-    const cv::Vec3d right_point = right_origin + diagnostic.right_distance_m * right_direction;
-    diagnostic.ray_gap_m = cv::norm(left_point - right_point);
-    const cv::Vec3d midpoint = 0.5 * (left_point + right_point);
+    const cv::Vec3d top_point = top_origin + diagnostic.top_distance_m * top_direction;
+    const cv::Vec3d bottom_point = bottom_origin + diagnostic.bottom_distance_m * bottom_direction;
+    diagnostic.ray_gap_m = cv::norm(top_point - bottom_point);
+    const cv::Vec3d midpoint = 0.5 * (top_point + bottom_point);
     diagnostic.distance_m = std::hypot(midpoint[0], midpoint[1]);
     diagnostic.midpoint_x_m = midpoint[0];
     diagnostic.camera_range_m =
-        std::max(cv::norm(midpoint - left_origin), cv::norm(midpoint - right_origin));
+        std::max(cv::norm(midpoint - top_origin), cv::norm(midpoint - bottom_origin));
     if (!finiteVector(midpoint) || !std::isfinite(diagnostic.ray_gap_m) ||
         !std::isfinite(diagnostic.distance_m) || !std::isfinite(diagnostic.camera_range_m))
         return reject(StereoTriangulationRejection::non_finite_result);
@@ -126,7 +126,7 @@ StereoTriangulator::triangulate(const cv::Vec3d& left_origin, const cv::Vec3d& l
         return reject(StereoTriangulationRejection::camera_range_too_large);
 
     return StereoTriangulationResult{midpoint, diagnostic.distance_m, diagnostic.ray_gap_m,
-                                     diagnostic.left_distance_m, diagnostic.right_distance_m};
+                                     diagnostic.top_distance_m, diagnostic.bottom_distance_m};
 }
 
 } // namespace dart_vision::stereo

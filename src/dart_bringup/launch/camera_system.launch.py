@@ -1,4 +1,4 @@
-# 可选机器人描述、双相机驱动、左右绿灯检测与双目三角测量
+# 可选机器人描述、双相机驱动、上下相机绿灯检测与双目三角测量
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
@@ -16,7 +16,6 @@ def generate_launch_description():
     cameras_file = LaunchConfiguration("cameras_file")
     detector_params_file = LaunchConfiguration("green_light_detector_params_file")
     stereo_params_file = LaunchConfiguration("stereo_triangulator_params_file")
-    site_file = LaunchConfiguration("site_file")
     use_sim_time = ParameterValue(LaunchConfiguration("use_sim_time"), value_type=bool)
 
     bringup_share = FindPackageShare("dart_bringup")
@@ -28,7 +27,6 @@ def generate_launch_description():
     default_stereo_params_file = PathJoinSubstitution(
         [config_directory, "stereo_triangulator.yaml"]
     )
-    default_site_file = PathJoinSubstitution([config_directory, "site", "default.yaml"])
 
     description_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -38,7 +36,6 @@ def generate_launch_description():
         ),
         condition=IfCondition(LaunchConfiguration("start_description")),
         launch_arguments={
-            "site_file": site_file,
             "use_sim_time": LaunchConfiguration("use_sim_time"),
         }.items(),
     )
@@ -64,7 +61,7 @@ def generate_launch_description():
             parameters=[detector_params_file, {"use_sim_time": use_sim_time}],
             condition=UnlessCondition(start_driver),
         )
-        for namespace in ("left_camera", "right_camera")
+        for namespace in ("top_camera", "bottom_camera")
     ]
 
     detector_components = [
@@ -82,7 +79,7 @@ def generate_launch_description():
                 )
             ],
         )
-        for namespace in ("left_camera", "right_camera")
+        for namespace in ("top_camera", "bottom_camera")
     ]
 
     stereo_node = Node(
@@ -122,11 +119,6 @@ def generate_launch_description():
                 "stereo_triangulator_params_file",
                 default_value=default_stereo_params_file,
                 description="Stereo frame and triangulation parameter YAML file",
-            ),
-            DeclareLaunchArgument(
-                "site_file",
-                default_value=default_site_file,
-                description="Site configuration YAML file",
             ),
             description_launch,
             camera_launch,

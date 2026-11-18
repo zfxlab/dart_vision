@@ -73,7 +73,7 @@ AimingNode::AimingNode(const rclcpp::NodeOptions& options)
     const auto command_topic =
         declare_parameter<std::string>("command_topic", "/aim_command", read_only);
     reference_frame_ =
-        declare_parameter<std::string>("reference_frame", "ballistic_reference_frame", read_only);
+        declare_parameter<std::string>("reference_frame", "launcher_frame", read_only);
     target_timeout_s_ = declare_parameter<double>("target_timeout_s", 0.2, read_only);
     controller_timeout_s_ = declare_parameter<double>("controller_timeout_s", 0.3, read_only);
     max_ray_gap_m_ = declare_parameter<double>("max_ray_gap_m", 0.1, read_only);

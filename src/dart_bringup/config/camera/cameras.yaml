@@ -15,19 +15,19 @@ defaults:
 
 cameras:
   - enabled: true
-    namespace: left_camera
+    namespace: top_camera
     node_name: driver
     serial_number: 00DA1923275
     camera_name: camera
-    frame_id: left_camera_optical_frame
+    frame_id: top_camera_optical_frame
     camera_info_url: "calibration/00DA1923275.yaml"
 
   - enabled: true
-    namespace: right_camera
+    namespace: bottom_camera
     node_name: driver
     serial_number: 00DA1923281
     camera_name: camera
-    frame_id: right_camera_optical_frame
+    frame_id: bottom_camera_optical_frame
     camera_info_url: "calibration/00DA1923281.yaml"
 
   - enabled: false

@@ -20,7 +20,7 @@
 
 namespace dart_vision::stereo {
 
-/** 配对左右单位射线，通过 TF 和三角测量计算绿灯位置。 */
+/** 配对上下单位射线，通过 TF 和三角测量计算绿灯位置。 */
 class StereoTriangulatorNode : public rclcpp::Node {
   public:
     explicit StereoTriangulatorNode(const rclcpp::NodeOptions& options);
@@ -31,30 +31,30 @@ class StereoTriangulatorNode : public rclcpp::Node {
     static constexpr std::size_t kRejectionReasonCount =
         static_cast<std::size_t>(StereoTriangulationRejection::camera_range_too_large) + 1U;
 
-    void observationCallback(const GreenLightDetection::ConstSharedPtr& message, bool is_left);
+    void observationCallback(const GreenLightDetection::ConstSharedPtr& message, bool is_top);
     void matchQueuedObservations();
-    void processPair(const GreenLightDetection& left, const GreenLightDetection& right);
-    void publishFailure(const GreenLightDetection& left, const GreenLightDetection& right,
+    void processPair(const GreenLightDetection& top, const GreenLightDetection& bottom);
+    void publishFailure(const GreenLightDetection& top, const GreenLightDetection& bottom,
                         std::uint8_t status);
     void recordOutput(std::uint8_t status, const rclcpp::Time& stamp);
     void publishDiagnostics();
 
     struct DiagnosticStatistics {
-        std::uint64_t left_received_total{};
-        std::uint64_t right_received_total{};
+        std::uint64_t top_received_total{};
+        std::uint64_t bottom_received_total{};
         std::uint64_t pairs_total{};
         std::uint64_t valid_total{};
         std::uint64_t closed_total{};
         std::uint64_t invalid_total{};
-        std::uint64_t unmatched_left_total{};
-        std::uint64_t unmatched_right_total{};
+        std::uint64_t unmatched_top_total{};
+        std::uint64_t unmatched_bottom_total{};
         std::uint64_t frame_mismatch_total{};
         std::uint64_t input_status_invalid_total{};
         std::uint64_t bearing_invalid_total{};
         std::uint64_t transform_errors_total{};
         std::uint64_t transform_errors_interval{};
-        std::uint64_t left_received_interval{};
-        std::uint64_t right_received_interval{};
+        std::uint64_t top_received_interval{};
+        std::uint64_t bottom_received_interval{};
         std::uint64_t pairs_interval{};
         std::uint64_t valid_interval{};
         std::array<std::uint64_t, kRejectionReasonCount> rejection_totals{};
@@ -63,19 +63,19 @@ class StereoTriangulatorNode : public rclcpp::Node {
         std::chrono::steady_clock::time_point last_output_time{};
     };
 
-    std::string left_frame_id_, right_frame_id_, reference_frame_;
+    std::string top_frame_id_, bottom_frame_id_, reference_frame_;
     std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
     std::unique_ptr<tf2_ros::TransformListener> tf_listener_;
 
     double max_pair_delta_s_{};
     std::size_t queue_size_{};
     std::unique_ptr<StereoTriangulator> triangulator_;
-    std::deque<GreenLightDetection::ConstSharedPtr> left_queue_;
-    std::deque<GreenLightDetection::ConstSharedPtr> right_queue_;
+    std::deque<GreenLightDetection::ConstSharedPtr> top_queue_;
+    std::deque<GreenLightDetection::ConstSharedPtr> bottom_queue_;
     std::mutex queue_mutex_;
 
-    rclcpp::Subscription<GreenLightDetection>::SharedPtr left_subscription_;
-    rclcpp::Subscription<GreenLightDetection>::SharedPtr right_subscription_;
+    rclcpp::Subscription<GreenLightDetection>::SharedPtr top_subscription_;
+    rclcpp::Subscription<GreenLightDetection>::SharedPtr bottom_subscription_;
     rclcpp::Publisher<StereoTarget>::SharedPtr result_publisher_;
     rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diagnostics_publisher_;
     rclcpp::TimerBase::SharedPtr diagnostics_timer_;

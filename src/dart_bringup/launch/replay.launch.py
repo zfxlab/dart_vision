@@ -103,12 +103,12 @@ def replay_actions(context):
             "--required-nodes",
             *(
                 [
-                    "/left_camera/green_light_detector",
-                    "/right_camera/green_light_detector",
+                    "/top_camera/green_light_detector",
+                    "/bottom_camera/green_light_detector",
                     "/camera/stereo_triangulator",
                     "/aiming",
-                    "/left_camera/replay_decoder",
-                    "/right_camera/replay_decoder",
+                    "/top_camera/replay_decoder",
+                    "/bottom_camera/replay_decoder",
                 ]
                 if mode == "recompute"
                 else []
@@ -167,7 +167,7 @@ def replay_actions(context):
                 remappings=[("in/compressed", "image_raw/compressed"), ("out", "image_raw")],
                 output="screen",
             )
-            for namespace in ("left_camera", "right_camera")
+            for namespace in ("top_camera", "bottom_camera")
             if f"/{namespace}/image_raw/compressed" in available
         ],
         player,

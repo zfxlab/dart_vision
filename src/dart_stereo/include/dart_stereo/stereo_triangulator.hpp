@@ -27,8 +27,8 @@ struct StereoTriangulationResult {
     /// 参考原点到目标的水平距离。
     double distance_m{};
     double ray_gap_m{};
-    double left_ray_distance_m{};
-    double right_ray_distance_m{};
+    double top_ray_distance_m{};
+    double bottom_ray_distance_m{};
 };
 
 enum class StereoTriangulationRejection {
@@ -54,8 +54,8 @@ struct StereoTriangulationDiagnostics {
     StereoTriangulationRejection rejection{StereoTriangulationRejection::none};
     double baseline_m{std::numeric_limits<double>::quiet_NaN()};
     double ray_angle_deg{std::numeric_limits<double>::quiet_NaN()};
-    double left_distance_m{std::numeric_limits<double>::quiet_NaN()};
-    double right_distance_m{std::numeric_limits<double>::quiet_NaN()};
+    double top_distance_m{std::numeric_limits<double>::quiet_NaN()};
+    double bottom_distance_m{std::numeric_limits<double>::quiet_NaN()};
     double ray_gap_m{std::numeric_limits<double>::quiet_NaN()};
     double distance_m{std::numeric_limits<double>::quiet_NaN()};
     double camera_range_m{std::numeric_limits<double>::quiet_NaN()};
@@ -69,8 +69,8 @@ class StereoTriangulator {
 
     /// 两个光心位置及视线方向必须位于同一正交坐标系。
     [[nodiscard]] std::optional<StereoTriangulationResult>
-    triangulate(const cv::Vec3d& left_origin, const cv::Vec3d& left_bearing,
-                const cv::Vec3d& right_origin, const cv::Vec3d& right_bearing,
+    triangulate(const cv::Vec3d& top_origin, const cv::Vec3d& top_bearing,
+                const cv::Vec3d& bottom_origin, const cv::Vec3d& bottom_bearing,
                 StereoTriangulationDiagnostics* diagnostics = nullptr) const noexcept;
 
   private:

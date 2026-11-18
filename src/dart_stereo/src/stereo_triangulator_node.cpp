@@ -68,18 +68,18 @@ StereoTriangulatorNode::StereoTriangulatorNode(const rclcpp::NodeOptions& option
     read_only.read_only = true;
     read_only.description = "Loaded at startup; restart the node to change this parameter";
 
-    const std::string left_topic =
-        declare_parameter<std::string>("left_detection_topic", "/left_camera/detection", read_only);
-    const std::string right_topic = declare_parameter<std::string>(
-        "right_detection_topic", "/right_camera/detection", read_only);
+    const std::string top_topic =
+        declare_parameter<std::string>("top_detection_topic", "/top_camera/detection", read_only);
+    const std::string bottom_topic = declare_parameter<std::string>(
+        "bottom_detection_topic", "/bottom_camera/detection", read_only);
     const std::string result_topic =
         declare_parameter<std::string>("result_topic", "/stereo_target", read_only);
-    left_frame_id_ =
-        declare_parameter<std::string>("left_frame_id", "left_camera_optical_frame", read_only);
-    right_frame_id_ =
-        declare_parameter<std::string>("right_frame_id", "right_camera_optical_frame", read_only);
+    top_frame_id_ =
+        declare_parameter<std::string>("top_frame_id", "top_camera_optical_frame", read_only);
+    bottom_frame_id_ =
+        declare_parameter<std::string>("bottom_frame_id", "bottom_camera_optical_frame", read_only);
     reference_frame_ =
-        declare_parameter<std::string>("reference_frame", "stereo_camera_center_link", read_only);
+        declare_parameter<std::string>("reference_frame", "launcher_frame", read_only);
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
     tf_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_);
     rcl_jump_threshold_t threshold{};
@@ -99,10 +99,10 @@ StereoTriangulatorNode::StereoTriangulatorNode(const rclcpp::NodeOptions& option
     config.max_ray_gap_m =
         declare_parameter<double>("max_ray_gap_m", config.max_ray_gap_m, read_only);
 
-    if (left_topic.empty() || right_topic.empty() || result_topic.empty() ||
-        left_frame_id_.empty() || right_frame_id_.empty() || reference_frame_.empty() ||
+    if (top_topic.empty() || bottom_topic.empty() || result_topic.empty() ||
+        top_frame_id_.empty() || bottom_frame_id_.empty() || reference_frame_.empty() ||
         !std::isfinite(max_pair_delta_s_) || max_pair_delta_s_ < 0.0 ||
-        configured_queue_size <= 0 || left_frame_id_ == right_frame_id_) {
+        configured_queue_size <= 0 || top_frame_id_ == bottom_frame_id_) {
         throw std::invalid_argument("Invalid stereo triangulator node configuration");
     }
     queue_size_ = static_cast<std::size_t>(configured_queue_size);
@@ -113,91 +113,92 @@ StereoTriangulatorNode::StereoTriangulatorNode(const rclcpp::NodeOptions& option
         create_publisher<diagnostic_msgs::msg::DiagnosticArray>("/diagnostics", rclcpp::QoS(10));
     diagnostics_timer_ = create_wall_timer(
         kDiagnosticsPeriod, std::bind(&StereoTriangulatorNode::publishDiagnostics, this));
-    left_subscription_ = create_subscription<GreenLightDetection>(
-        left_topic, rclcpp::SensorDataQoS(), [this](GreenLightDetection::ConstSharedPtr message) {
+    top_subscription_ = create_subscription<GreenLightDetection>(
+        top_topic, rclcpp::SensorDataQoS(), [this](GreenLightDetection::ConstSharedPtr message) {
             observationCallback(message, true);
         });
-    right_subscription_ = create_subscription<GreenLightDetection>(
-        right_topic, rclcpp::SensorDataQoS(), [this](GreenLightDetection::ConstSharedPtr message) {
+    bottom_subscription_ = create_subscription<GreenLightDetection>(
+        bottom_topic, rclcpp::SensorDataQoS(), [this](GreenLightDetection::ConstSharedPtr message) {
             observationCallback(message, false);
         });
 
-    RCLCPP_INFO(get_logger(), "Stereo triangulator: left='%s', right='%s', output='%s'",
-                left_topic.c_str(), right_topic.c_str(), result_topic.c_str());
+    RCLCPP_INFO(get_logger(), "Stereo triangulator: top='%s', bottom='%s', output='%s'",
+                top_topic.c_str(), bottom_topic.c_str(), result_topic.c_str());
 }
 
 void StereoTriangulatorNode::observationCallback(const GreenLightDetection::ConstSharedPtr& message,
-                                                 const bool is_left) {
+                                                 const bool is_top) {
     {
         std::lock_guard<std::mutex> lock(diagnostic_mutex_);
-        if (is_left) {
-            ++diagnostic_statistics_.left_received_total;
-            ++diagnostic_statistics_.left_received_interval;
+        if (is_top) {
+            ++diagnostic_statistics_.top_received_total;
+            ++diagnostic_statistics_.top_received_interval;
         } else {
-            ++diagnostic_statistics_.right_received_total;
-            ++diagnostic_statistics_.right_received_interval;
+            ++diagnostic_statistics_.bottom_received_total;
+            ++diagnostic_statistics_.bottom_received_interval;
         }
     }
     std::lock_guard<std::mutex> lock(queue_mutex_);
-    auto& queue = is_left ? left_queue_ : right_queue_;
+    auto& queue = is_top ? top_queue_ : bottom_queue_;
     // Clear on an actual ROS clock jump, not on reordered observations.
     if (clock_jumped_.exchange(false)) {
-        left_queue_.clear();
-        right_queue_.clear();
+        top_queue_.clear();
+        bottom_queue_.clear();
     }
     queue.push_back(message);
     while (queue.size() > queue_size_) {
         queue.pop_front();
         std::lock_guard<std::mutex> diagnostic_lock(diagnostic_mutex_);
-        if (is_left)
-            ++diagnostic_statistics_.unmatched_left_total;
+        if (is_top)
+            ++diagnostic_statistics_.unmatched_top_total;
         else
-            ++diagnostic_statistics_.unmatched_right_total;
+            ++diagnostic_statistics_.unmatched_bottom_total;
     }
     matchQueuedObservations();
 }
 
 void StereoTriangulatorNode::matchQueuedObservations() {
-    while (!left_queue_.empty() && !right_queue_.empty()) {
-        std::size_t best_left = 0U;
-        std::size_t best_right = 0U;
+    while (!top_queue_.empty() && !bottom_queue_.empty()) {
+        std::size_t best_top = 0U;
+        std::size_t best_bottom = 0U;
         double best_delta = std::numeric_limits<double>::infinity();
-        for (std::size_t left_index = 0; left_index < left_queue_.size(); ++left_index) {
-            for (std::size_t right_index = 0; right_index < right_queue_.size(); ++right_index) {
-                const double delta = std::abs(stampSeconds(left_queue_[left_index]->header) -
-                                              stampSeconds(right_queue_[right_index]->header));
+        for (std::size_t top_index = 0; top_index < top_queue_.size(); ++top_index) {
+            for (std::size_t bottom_index = 0; bottom_index < bottom_queue_.size();
+                 ++bottom_index) {
+                const double delta = std::abs(stampSeconds(top_queue_[top_index]->header) -
+                                              stampSeconds(bottom_queue_[bottom_index]->header));
                 if (delta < best_delta) {
                     best_delta = delta;
-                    best_left = left_index;
-                    best_right = right_index;
+                    best_top = top_index;
+                    best_bottom = bottom_index;
                 }
             }
         }
 
         if (best_delta <= max_pair_delta_s_) {
-            const auto left = left_queue_[best_left];
-            const auto right = right_queue_[best_right];
+            const auto top = top_queue_[best_top];
+            const auto bottom = bottom_queue_[best_bottom];
             {
                 std::lock_guard<std::mutex> lock(diagnostic_mutex_);
-                diagnostic_statistics_.unmatched_left_total += best_left;
-                diagnostic_statistics_.unmatched_right_total += best_right;
+                diagnostic_statistics_.unmatched_top_total += best_top;
+                diagnostic_statistics_.unmatched_bottom_total += best_bottom;
             }
-            left_queue_.erase(left_queue_.begin(), left_queue_.begin() + best_left + 1U);
-            right_queue_.erase(right_queue_.begin(), right_queue_.begin() + best_right + 1U);
-            processPair(*left, *right);
+            top_queue_.erase(top_queue_.begin(), top_queue_.begin() + best_top + 1U);
+            bottom_queue_.erase(bottom_queue_.begin(), bottom_queue_.begin() + best_bottom + 1U);
+            processPair(*top, *bottom);
             continue;
         }
 
-        const double left_stamp = stampSeconds(left_queue_.front()->header);
-        const double right_stamp = stampSeconds(right_queue_.front()->header);
-        if (left_stamp + max_pair_delta_s_ < right_stamp) {
-            left_queue_.pop_front();
+        const double top_stamp = stampSeconds(top_queue_.front()->header);
+        const double bottom_stamp = stampSeconds(bottom_queue_.front()->header);
+        if (top_stamp + max_pair_delta_s_ < bottom_stamp) {
+            top_queue_.pop_front();
             std::lock_guard<std::mutex> lock(diagnostic_mutex_);
-            ++diagnostic_statistics_.unmatched_left_total;
-        } else if (right_stamp + max_pair_delta_s_ < left_stamp) {
-            right_queue_.pop_front();
+            ++diagnostic_statistics_.unmatched_top_total;
+        } else if (bottom_stamp + max_pair_delta_s_ < top_stamp) {
+            bottom_queue_.pop_front();
             std::lock_guard<std::mutex> lock(diagnostic_mutex_);
-            ++diagnostic_statistics_.unmatched_right_total;
+            ++diagnostic_statistics_.unmatched_bottom_total;
         } else {
             break;
         }
@@ -207,10 +208,10 @@ void StereoTriangulatorNode::matchQueuedObservations() {
     }
 }
 
-void StereoTriangulatorNode::processPair(const GreenLightDetection& left,
-                                         const GreenLightDetection& right) {
+void StereoTriangulatorNode::processPair(const GreenLightDetection& top,
+                                         const GreenLightDetection& bottom) {
     const double pair_delta_ms =
-        std::abs(stampSeconds(left.header) - stampSeconds(right.header)) * 1000.0;
+        std::abs(stampSeconds(top.header) - stampSeconds(bottom.header)) * 1000.0;
     {
         std::lock_guard<std::mutex> lock(diagnostic_mutex_);
         ++diagnostic_statistics_.pairs_total;
@@ -219,49 +220,49 @@ void StereoTriangulatorNode::processPair(const GreenLightDetection& left,
         if (diagnostic_statistics_.pair_delta_ms.size() > kLatencyWindowSize)
             diagnostic_statistics_.pair_delta_ms.pop_front();
     }
-    if (left.header.frame_id != left_frame_id_ || right.header.frame_id != right_frame_id_) {
+    if (top.header.frame_id != top_frame_id_ || bottom.header.frame_id != bottom_frame_id_) {
         {
             std::lock_guard<std::mutex> lock(diagnostic_mutex_);
             ++diagnostic_statistics_.frame_mismatch_total;
         }
-        publishFailure(left, right, StereoTarget::INVALID);
+        publishFailure(top, bottom, StereoTarget::INVALID);
         return;
     }
-    if (left.status == GreenLightDetection::CLOSED && right.status == GreenLightDetection::CLOSED) {
-        publishFailure(left, right, StereoTarget::CLOSED);
+    if (top.status == GreenLightDetection::CLOSED && bottom.status == GreenLightDetection::CLOSED) {
+        publishFailure(top, bottom, StereoTarget::CLOSED);
         return;
     }
-    if (left.status != GreenLightDetection::DETECTED) {
+    if (top.status != GreenLightDetection::DETECTED) {
         {
             std::lock_guard<std::mutex> lock(diagnostic_mutex_);
             ++diagnostic_statistics_.input_status_invalid_total;
         }
-        publishFailure(left, right, StereoTarget::INVALID);
+        publishFailure(top, bottom, StereoTarget::INVALID);
         return;
     }
-    if (right.status != GreenLightDetection::DETECTED) {
+    if (bottom.status != GreenLightDetection::DETECTED) {
         {
             std::lock_guard<std::mutex> lock(diagnostic_mutex_);
             ++diagnostic_statistics_.input_status_invalid_total;
         }
-        publishFailure(left, right, StereoTarget::INVALID);
+        publishFailure(top, bottom, StereoTarget::INVALID);
         return;
     }
 
-    const auto lb = bearing(left);
-    const auto rb = bearing(right);
+    const auto lb = bearing(top);
+    const auto rb = bearing(bottom);
     if (!lb || !rb) {
         {
             std::lock_guard<std::mutex> lock(diagnostic_mutex_);
             ++diagnostic_statistics_.bearing_invalid_total;
         }
-        publishFailure(left, right, StereoTarget::INVALID);
+        publishFailure(top, bottom, StereoTarget::INVALID);
         return;
     }
-    const auto l = rclcpp::Time(left.header.stamp).nanoseconds();
-    const auto r = rclcpp::Time(right.header.stamp).nanoseconds();
+    const auto l = rclcpp::Time(top.header.stamp).nanoseconds();
+    const auto r = rclcpp::Time(bottom.header.stamp).nanoseconds();
     const rclcpp::Time measurement_time(l + (r - l) / 2);
-    cv::Vec3d left_origin, right_origin, left_direction, right_direction;
+    cv::Vec3d top_origin, bottom_origin, top_direction, bottom_direction;
     try {
         // 光心使用 TF 的平移，视线是自由向量，仅使用 TF 的旋转。
         const auto transform_ray = [&](const std::string& frame, const cv::Vec3d& bearing,
@@ -278,22 +279,22 @@ void StereoTriangulatorNode::processPair(const GreenLightDetection& left,
             const auto& v = center_direction.vector;
             direction = {v.x, v.y, v.z};
         };
-        transform_ray(left_frame_id_, *lb, left_origin, left_direction);
-        transform_ray(right_frame_id_, *rb, right_origin, right_direction);
+        transform_ray(top_frame_id_, *lb, top_origin, top_direction);
+        transform_ray(bottom_frame_id_, *rb, bottom_origin, bottom_direction);
     } catch (const tf2::TransformException& error) {
         {
             std::lock_guard<std::mutex> lock(diagnostic_mutex_);
             ++diagnostic_statistics_.transform_errors_total;
             ++diagnostic_statistics_.transform_errors_interval;
         }
-        publishFailure(left, right, StereoTarget::INVALID);
+        publishFailure(top, bottom, StereoTarget::INVALID);
         RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), kWarningThrottleMs,
                              "Stereo reference transform unavailable: %s", error.what());
         return;
     }
     StereoTriangulationDiagnostics diagnostics;
-    const auto result = triangulator_->triangulate(left_origin, left_direction, right_origin,
-                                                   right_direction, &diagnostics);
+    const auto result = triangulator_->triangulate(top_origin, top_direction, bottom_origin,
+                                                   bottom_direction, &diagnostics);
     if (!result) {
         {
             std::lock_guard<std::mutex> lock(diagnostic_mutex_);
@@ -301,25 +302,25 @@ void StereoTriangulatorNode::processPair(const GreenLightDetection& left,
             if (index < diagnostic_statistics_.rejection_totals.size())
                 ++diagnostic_statistics_.rejection_totals[index];
         }
-        publishFailure(left, right, StereoTarget::INVALID);
+        publishFailure(top, bottom, StereoTarget::INVALID);
         RCLCPP_DEBUG_THROTTLE(
             get_logger(), *get_clock(), kDebugThrottleMs,
             "Stereo triangulation rejected: reason=%s, pair_delta=%.6f s, "
             "baseline=%.6f m, "
-            "ray_angle=%.6f deg, left_depth=%.6f m, right_depth=%.6f m, "
+            "ray_angle=%.6f deg, top_depth=%.6f m, bottom_depth=%.6f m, "
             "ray_gap=%.6f m, camera_range=%.6f m, midpoint_x=%.6f m, "
-            "left_dir=[%.6f, %.6f, %.6f], right_dir=[%.6f, %.6f, %.6f]",
+            "top_dir=[%.6f, %.6f, %.6f], bottom_dir=[%.6f, %.6f, %.6f]",
             stereoTriangulationRejectionName(diagnostics.rejection),
-            std::abs(stampSeconds(left.header) - stampSeconds(right.header)),
-            diagnostics.baseline_m, diagnostics.ray_angle_deg, diagnostics.left_distance_m,
-            diagnostics.right_distance_m, diagnostics.ray_gap_m, diagnostics.camera_range_m,
-            diagnostics.midpoint_x_m, left_direction[0], left_direction[1], left_direction[2],
-            right_direction[0], right_direction[1], right_direction[2]);
+            std::abs(stampSeconds(top.header) - stampSeconds(bottom.header)),
+            diagnostics.baseline_m, diagnostics.ray_angle_deg, diagnostics.top_distance_m,
+            diagnostics.bottom_distance_m, diagnostics.ray_gap_m, diagnostics.camera_range_m,
+            diagnostics.midpoint_x_m, top_direction[0], top_direction[1], top_direction[2],
+            bottom_direction[0], bottom_direction[1], bottom_direction[2]);
         return;
     }
 
     StereoTarget message;
-    message.header = left.header;
+    message.header = top.header;
     message.header.stamp = measurement_time;
     message.header.frame_id = reference_frame_;
     message.status = StereoTarget::VALID;
@@ -333,13 +334,13 @@ void StereoTriangulatorNode::processPair(const GreenLightDetection& left,
     recordOutput(message.status, rclcpp::Time(message.header.stamp));
 }
 
-void StereoTriangulatorNode::publishFailure(const GreenLightDetection& left,
-                                            const GreenLightDetection& right,
+void StereoTriangulatorNode::publishFailure(const GreenLightDetection& top,
+                                            const GreenLightDetection& bottom,
                                             const std::uint8_t status) {
     StereoTarget message;
-    message.header = left.header;
-    const auto l = rclcpp::Time(left.header.stamp).nanoseconds();
-    const auto r = rclcpp::Time(right.header.stamp).nanoseconds();
+    message.header = top.header;
+    const auto l = rclcpp::Time(top.header.stamp).nanoseconds();
+    const auto r = rclcpp::Time(bottom.header.stamp).nanoseconds();
     message.header.stamp = rclcpp::Time(l + (r - l) / 2);
     message.header.frame_id = reference_frame_;
     message.status = status;
@@ -376,8 +377,8 @@ void StereoTriangulatorNode::publishDiagnostics() {
     {
         std::lock_guard<std::mutex> lock(diagnostic_mutex_);
         statistics = diagnostic_statistics_;
-        diagnostic_statistics_.left_received_interval = 0;
-        diagnostic_statistics_.right_received_interval = 0;
+        diagnostic_statistics_.top_received_interval = 0;
+        diagnostic_statistics_.bottom_received_interval = 0;
         diagnostic_statistics_.pairs_interval = 0;
         diagnostic_statistics_.valid_interval = 0;
         diagnostic_statistics_.transform_errors_interval = 0;
@@ -397,7 +398,7 @@ void StereoTriangulatorNode::publishDiagnostics() {
     diagnostic_msgs::msg::DiagnosticStatus status;
     status.name = std::string(get_fully_qualified_name()) + ": stereo_triangulator";
     status.hardware_id = "none";
-    if (statistics.left_received_interval == 0 || statistics.right_received_interval == 0) {
+    if (statistics.top_received_interval == 0 || statistics.bottom_received_interval == 0) {
         status.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
         status.message = "missing stereo input";
     } else if (statistics.pairs_interval == 0) {
@@ -411,9 +412,9 @@ void StereoTriangulatorNode::publishDiagnostics() {
         status.message = "processing";
     }
     status.values.push_back(
-        keyValue("left_input_fps", std::to_string(rate(statistics.left_received_interval))));
+        keyValue("top_input_fps", std::to_string(rate(statistics.top_received_interval))));
     status.values.push_back(
-        keyValue("right_input_fps", std::to_string(rate(statistics.right_received_interval))));
+        keyValue("bottom_input_fps", std::to_string(rate(statistics.bottom_received_interval))));
     status.values.push_back(
         keyValue("paired_fps", std::to_string(rate(statistics.pairs_interval))));
     status.values.push_back(keyValue("valid_fps", std::to_string(rate(statistics.valid_interval))));
@@ -431,13 +432,13 @@ void StereoTriangulatorNode::publishDiagnostics() {
     status.values.push_back(keyValue("closed_total", std::to_string(statistics.closed_total)));
     status.values.push_back(keyValue("invalid_total", std::to_string(statistics.invalid_total)));
     status.values.push_back(
-        keyValue("unmatched_left_total", std::to_string(statistics.unmatched_left_total)));
+        keyValue("unmatched_top_total", std::to_string(statistics.unmatched_top_total)));
     status.values.push_back(
-        keyValue("unmatched_right_total", std::to_string(statistics.unmatched_right_total)));
+        keyValue("unmatched_bottom_total", std::to_string(statistics.unmatched_bottom_total)));
     status.values.push_back(
-        keyValue("left_received_total", std::to_string(statistics.left_received_total)));
+        keyValue("top_received_total", std::to_string(statistics.top_received_total)));
     status.values.push_back(
-        keyValue("right_received_total", std::to_string(statistics.right_received_total)));
+        keyValue("bottom_received_total", std::to_string(statistics.bottom_received_total)));
     status.values.push_back(
         keyValue("frame_mismatch_total", std::to_string(statistics.frame_mismatch_total)));
     status.values.push_back(keyValue("input_status_invalid_total",

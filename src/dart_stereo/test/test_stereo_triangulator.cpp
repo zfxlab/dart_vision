@@ -10,8 +10,8 @@ TEST(Stereo3D, RecoversPointWithHorizontalVerticalAndObliqueBaselines) {
     const cv::Vec3d target{10, 2, 3};
     for (const cv::Vec3d& baseline :
          {cv::Vec3d{0, 0.2, 0}, cv::Vec3d{0, 0, 0.2}, cv::Vec3d{0.1, 0.2, 0.3}}) {
-        const cv::Vec3d left = -0.5 * baseline, right = 0.5 * baseline;
-        const auto result = solver.triangulate(left, target - left, right, target - right);
+        const cv::Vec3d top = -0.5 * baseline, bottom = 0.5 * baseline;
+        const auto result = solver.triangulate(top, target - top, bottom, target - bottom);
         ASSERT_TRUE(result);
         EXPECT_LT(cv::norm(result->position_m - target), 1e-8);
         EXPECT_NEAR(result->ray_gap_m, 0, 1e-8);
@@ -21,22 +21,22 @@ TEST(Stereo3D, RecoversPointWithHorizontalVerticalAndObliqueBaselines) {
 
 TEST(Stereo3D, SkewMidpointIsEquivariantUnderRigidTransforms) {
     const StereoTriangulator solver({});
-    const cv::Vec3d left{0, 0, 0}, right{1, -1, 0.08};
+    const cv::Vec3d top{0, 0, 0}, bottom{1, -1, 0.08};
     const cv::Vec3d dl{1, 0, 0}, dr{0, 1, 0};
-    const auto result = solver.triangulate(left, dl, right, dr);
+    const auto result = solver.triangulate(top, dl, bottom, dr);
     ASSERT_TRUE(result);
     EXPECT_LT(cv::norm(result->position_m - cv::Vec3d(1, 0, 0.04)), 1e-12);
     EXPECT_NEAR(result->ray_gap_m, 0.08, 1e-12);
     // Rotates the result behind reference x=0; still in front of both cameras.
     const cv::Matx33d rotation(0, 0, -1, 1, 0, 0, 0, -1, 0);
     const cv::Vec3d translation{-10, 2, 4};
-    const auto transformed = solver.triangulate(rotation * left + translation, rotation * dl,
-                                                rotation * right + translation, rotation * dr);
+    const auto transformed = solver.triangulate(rotation * top + translation, rotation * dl,
+                                                rotation * bottom + translation, rotation * dr);
     ASSERT_TRUE(transformed);
     EXPECT_LT(cv::norm(transformed->position_m - (rotation * result->position_m + translation)),
               1e-10);
     EXPECT_NEAR(transformed->ray_gap_m, result->ray_gap_m, 1e-10);
-    EXPECT_NEAR(transformed->left_ray_distance_m, result->left_ray_distance_m, 1e-10);
+    EXPECT_NEAR(transformed->top_ray_distance_m, result->top_ray_distance_m, 1e-10);
 }
 
 TEST(Stereo3D, RejectsDegenerateAndInvalidGeometry) {
@@ -70,8 +70,8 @@ TEST(Stereo3D, RejectsDegenerateAndInvalidGeometry) {
 
 TEST(Stereo3D, RangeLimitUsesSpaceNotHorizontalProjection) {
     const StereoTriangulator solver({});
-    const cv::Vec3d left{0, -0.1, 0}, right{0, 0.1, 0}, target{1, 0, 51};
+    const cv::Vec3d top{0, -0.1, 0}, bottom{0, 0.1, 0}, target{1, 0, 51};
     StereoTriangulationDiagnostics diag;
-    EXPECT_FALSE(solver.triangulate(left, target - left, right, target - right, &diag));
+    EXPECT_FALSE(solver.triangulate(top, target - top, bottom, target - bottom, &diag));
     EXPECT_EQ(diag.rejection, StereoTriangulationRejection::camera_range_too_large);
 }

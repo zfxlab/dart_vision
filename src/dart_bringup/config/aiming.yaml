@@ -3,9 +3,9 @@
     stereo_topic: /stereo_target
     controller_topic: /controller_state
     command_topic: /aim_command
-    # 原点在离轨点，轴与 launcher_frame 对齐；底座水平时 z 向上。
-    # 不使用带发射俯仰角的 dart_release_link。
-    reference_frame: ballistic_reference_frame
+    # 以发射架原点计算距离和高度差；底座水平时 z 向上。
+    # 如需相对离轨点输出，改用 ballistic_reference_frame。
+    reference_frame: launcher_frame
     target_timeout_s: 0.2
     controller_timeout_s: 0.3
     max_ray_gap_m: 0.1

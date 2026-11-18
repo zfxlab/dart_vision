@@ -31,10 +31,10 @@ recording:
     # 当前算法可重复测试所需的全部上游输入。
     inputs:
       topics:
-        - /left_camera/image_raw/compressed
-        - /right_camera/image_raw/compressed
-        - /left_camera/camera_info
-        - /right_camera/camera_info
+        - /top_camera/image_raw/compressed
+        - /bottom_camera/image_raw/compressed
+        - /top_camera/camera_info
+        - /bottom_camera/camera_info
         - /controller_state
         - /tf
         - /tf_static
@@ -43,8 +43,8 @@ recording:
     full:
       include: inputs
       topics:
-        - /left_camera/detection
-        - /right_camera/detection
+        - /top_camera/detection
+        - /bottom_camera/detection
         - /stereo_target
         - /aim_command
         - /joint_states

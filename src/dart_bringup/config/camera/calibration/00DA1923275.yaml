@@ -1,4 +1,4 @@
-# Left camera (00DA1923275); source: third_party/stereo_calib/outputs/left.json
+# Top camera (00DA1923275); source: third_party/stereo_calib/outputs/left.json
 # Raw-image calibration: D=[k1,k2,p1,p2,k3], R=I, P=[K|0].
 image_width: 1440
 image_height: 1080

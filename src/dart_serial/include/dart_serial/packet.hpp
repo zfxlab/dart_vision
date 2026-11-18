@@ -33,7 +33,7 @@ struct SendPacket {
     std::uint8_t state{2};         ///< 0=CLOSED, 1=VALID, 2=INVALID; default unknown
     float yaw_rad{};               ///< 加上 offset 后的相对偏转，向左为正
     float horizontal_distance_m{}; ///< 输出参考点到绿灯的水平距离；非VALID时清零
-    float vertical_difference_m{}; ///< 绿灯相对离轨点的垂直高度差，向上为正；非VALID时清零
+    float vertical_difference_m{}; ///< 绿灯相对瞄准参考系原点的垂直高度差，向上为正；非VALID时清零
     std::uint16_t crc{};
 } __attribute__((packed));
 
