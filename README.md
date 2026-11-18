@@ -323,6 +323,7 @@ ros2 launch dart_bringup replay.launch.py \
 - `hik_camera_driver`：Hikrobot 工业相机驱动。
 - `dart_description`：机器人模型和相机、发射架坐标系。
 - `livox_ros2_driver`：Livox 雷达驱动。
+- `stereo_calib`：以 `camera_1/camera_2` 编号的通用离线双目标定工具。
 
 ## 配置
 
@@ -418,7 +419,10 @@ ros2 param set /top_camera/green_light_detector center_filter.enabled false
 同时存在前后偏移和高度差，安装外参仍需按实机标定复核。
 相机或图像旋转由实际光学坐标关系决定，不交换检测中心的 x/y。
 仅移动相机且镜头、焦距和原始图像模式未变时，可复用并复核单目内参；双目外参需要重新确定。
-使用安装约束标定时，还需同步 `third_party/stereo_calib/configs/installation.json` 的安装几何。
+标定工具使用 `camera_1/camera_2`，当前系统分别映射到上相机 `00DA1923275` 和下相机
+`00DA1923281`。使用安装约束时，需在 `third_party/stereo_calib/configs/installation.json`
+填写两个光学坐标系相对公共参考系（例如 `launcher_frame`）的理论位姿；位置单位为 mm，
+不能直接填安装关节的位置。该工具的默认配置是通用示例，部署前必须按实际安装替换。
 机器人描述默认发布机械模型；场景分析使用 `dart_description` 的 `mode:=scene team:=red/blue`
 入口。安装偏移定义在 URDF 中，主项目已移除不再生效的 `site_file` 入口及场地 YAML。
 
