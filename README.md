@@ -8,7 +8,7 @@ Livox 雷达调试入口。
 hik_camera_driver
         │ Image + CameraInfo
         ▼
-dart_camera（左右绿灯检测）
+dart_camera（上下相机绿灯检测）
         │ GreenLightDetection
         ▼
 dart_stereo（双目三角测量）
@@ -190,7 +190,7 @@ ros2 topic echo /aim_command
 
 | 模式 | 内容 | 用途 |
 | --- | --- | --- |
-| `inputs` | 左右压缩图像、CameraInfo、控制器反馈、动态和静态 TF | 后续代码测试与算法重算 |
+| `inputs` | 上下相机的压缩图像、CameraInfo、控制器反馈、动态和静态 TF | 后续代码测试与算法重算 |
 | `full`（默认） | `inputs` 加检测、双目目标、瞄准指令、关节状态、诊断、日志和参数事件 | 完整历史复盘 |
 
 录制默认关闭；启动完整视觉链路并启用完整录制：
@@ -210,7 +210,7 @@ ros2 launch dart_bringup recording.launch.py profile:=inputs
 每次录制默认保存在项目根目录的 `rosbag/dart_vision_YYYYMMDD_HHMMSS/`，其中 `bag/`
 保存 MCAP，`config/` 保存配置基线副本及节点实际参数，`manifest.yaml` 记录 profile、话题、Git
 版本和退出状态。快照保留配置目录结构，录制配置位于 `config/rosbag/recording.yaml`；
-`snapshot_root` 相对于录制配置文件定位快照源根目录。左右压缩图像用于持续复盘，但有损
+`snapshot_root` 相对于录制配置文件定位快照源根目录。上下相机的压缩图像用于持续复盘，但有损
 压缩不适合作为严格的逐像素算法基准。
 配置文件副本仅供参考；`config/runtime_parameters.yaml` 保存通过节点参数服务读取的实际值
 （包含 launch 覆盖），`config/parameter_events.jsonl` 持续保存参数变更事件。manifest 的
@@ -226,7 +226,7 @@ ros2 launch dart_bringup recording.launch.py profile:=inputs
 
 ### 旧包裁剪与重算
 
-旧版本录包可以只保留左右压缩图像、CameraInfo、控制器状态和 TF，使用当前程序重新
+含上下相机话题的录包可以只保留两路压缩图像、CameraInfo、控制器状态和 TF，使用当前程序重新
 计算检测、双目目标和瞄准指令。先构建并加载当前工作区，然后生成新的 MCAP：
 
 ```bash
@@ -247,7 +247,7 @@ ros2 launch dart_bringup replay.launch.py \
   bag:=rosbag/dart_vision_20261015_000620_replay
 ```
 
-默认 `mode:=recompute`，该入口启动左右图像解码、当前检测/双目/瞄准节点，并用 `--clock-topics-all` 在每条消息前推进时钟，所有计算节点
+默认 `mode:=recompute`，该入口启动上下相机的图像解码、当前检测/双目/瞄准节点，并用 `--clock-topics-all` 在每条消息前推进时钟，所有计算节点
 使用仿真时间。相机、串口、机器人描述和自动录制均关闭，TF 来自录包。默认等待 3 秒
 供节点发现，可通过 `delay:=5.0` 调整；机器处理不及时可用 `rate:=0.5` 降速。
 瞄准节点仅在仿真时间下容忍最多 10 ms 的跨话题时钟传输偏差，实机仍严格拒绝未来时间戳。
@@ -263,8 +263,8 @@ ros2 launch dart_bringup replay.launch.py \
   bag:=rosbag/dart_vision_20261015_000620 mode:=recorded
 ```
 
-历史模式按包内实际话题播放，包含旧版独有的话题，不使用当前录制白名单过滤；仅启动
-已有左右压缩图像的解码器，不启动当前检测、双目或瞄准算法。`inputs` 包也可历史回放，
+历史模式按包内实际话题播放，包含旧版独有的话题，不使用当前录制白名单过滤；按包中实际存在的上下相机压缩图像话题启动
+对应的解码器，不启动当前检测、双目或瞄准算法。`inputs` 包也可历史回放，
 但其中没有历史算法结果。两种模式都读取整个分片目录，不需要先合并或裁剪，均支持
 `start`、`end`、`rate` 和 `loop`。历史自定义消息的查看仍需要兼容的接口定义。
 回放入口会提示可检测到的 `.msg` 字段差异或缺失接口，其他类型问题由 rosbag2 报告；
@@ -313,7 +313,7 @@ ros2 launch dart_bringup replay.launch.py \
 | --- | --- |
 | `dart_interfaces` | 定义检测、双目目标、控制器状态和瞄准指令消息 |
 | `dart_camera` | 分割绿色区域、筛选圆形目标，并计算和滤波单位视线 |
-| `dart_stereo` | 配对左右检测结果，使用 TF 在双目中心坐标系中进行三角测量 |
+| `dart_stereo` | 配对上下相机检测结果，使用 TF 在配置参考系中进行三角测量 |
 | `dart_aiming` | 将目标变换到发射架坐标系，执行函数拟合和偏角补偿 |
 | `dart_serial` | 解析控制器数据、发布关节状态并发送瞄准指令 |
 | `dart_bringup` | 集中管理项目 launch 文件和运行配置 |
@@ -333,10 +333,9 @@ ros2 launch dart_bringup replay.launch.py \
 | `camera/cameras.yaml` | 相机启用状态、序列号、曝光、帧率及标定文件引用 |
 | `camera/calibration/*.yaml` | 各相机内参和畸变参数 |
 | `green_light_detector.yaml` | 按目标模式切换的颜色分割、几何、亮度和掩膜清理参数 |
-| `stereo_triangulator.yaml` | 左右话题、配对时差和双目几何限制 |
+| `stereo_triangulator.yaml` | 上下相机话题、配对时差和双目几何限制 |
 | `aiming.yaml` | 超时、目标模式及二次函数拟合模型 |
 | `serial.yaml` | 串口设备、波特率、话题和电机角度校正 |
-| `site/default.yaml` | 红蓝方选择及场地坐标修正 |
 | `lidar/` | Livox 驱动与设备配置 |
 
 `aiming.yaml` 中的 `fitting.models` 可配置多个模型，并通过 `modes` 选择适用的目标模式。
@@ -344,7 +343,7 @@ ros2 launch dart_bringup replay.launch.py \
 `a*x^2 + b*x + c`；yaw 使用几何 yaw 作为输入，distance 使用几何距离作为输入。
 
 `green_light_detector.yaml` 中的 `profiles` 将识别参数映射到控制器 `target_mode`：`outpost`
-用于模式 `0`，`base` 用于模式 `1` 至 `4`。左右检测节点会订阅 `/controller_state` 并自动
+用于模式 `0`，`base` 用于模式 `1` 至 `4`。上下相机检测节点会订阅 `/controller_state` 并自动
 切换 profile；未收到受支持的模式前不执行识别。
 
 每套 profile 的 `center.method` 可独立选择绿灯观测中心算法，默认保留
@@ -367,12 +366,12 @@ profile 的配置，`center_fallback_total` 累计统计有效检测中使用回
 可在运行时切换，无需重启。基地模式（1～4）例如：
 
 ```bash
-ros2 param set /left_camera/green_light_detector profiles.base.center.method circle_fit
-ros2 param set /right_camera/green_light_detector profiles.base.center.method circle_fit
+ros2 param set /top_camera/green_light_detector profiles.base.center.method circle_fit
+ros2 param set /bottom_camera/green_light_detector profiles.base.center.method circle_fit
 ```
 
 前哨站模式 0 使用 `profiles.outpost.center.method`。两个节点的设置不是跨节点原子操作，
-应等左右均设置成功后再采样。运行时改参不会写回 YAML；持久配置修改
+应等两路均设置成功后再采样。运行时改参不会写回 YAML；持久配置修改
 `src/dart_bringup/config/green_light_detector.yaml` 中对应的 `center.method`。
 回放比较使用 `mode:=recompute`，`mode:=recorded` 不会重算旧检测结果。
 不同方法可能有固定中心偏移，之前按亮度加权中心拟合的临时内外参不能直接作为其他方法的
@@ -391,7 +390,7 @@ ros2 param set /right_camera/green_light_detector profiles.base.center.method ci
 滤波使用图像时间戳的实际间隔 `dt`，每轴计算 `alpha = 1 - exp(-dt / tau)` 和
 `center = previous + alpha * (observation - previous)`，首个有效点直接作为初值。
 默认时间常数适用于相机和目标基本静止的工况，理想阶跃约 3 秒达到变化量的 95%；
-EMA 能减小短时抖动，但不能消除缓慢漂移。左右相机应采用相同参数，运动工况需要重新评估
+EMA 能减小短时抖动，但不能消除缓慢漂移。上下相机应采用相同参数，运动工况需要重新评估
 响应滞后及双目误差。消息仍保留原图时间戳，处理耗时指标不包含滤波引入的响应滞后。
 
 任一非 `DETECTED` 帧、目标模式变化（包括同一 profile 内的模式切换）、相机内参或图像
@@ -399,32 +398,41 @@ EMA 能减小短时抖动，但不能消除缓慢漂移。左右相机应采用�
 配置也会重置历史；重捕获首帧直接输出新中心，不延用旧目标，也不在丢失期间输出旧坐标。
 仅靠有效检测无法判断未伴随模式变化的目标身份切换。
 
-这些 EMA 参数支持运行时修改。例如暂时关闭左相机滤波用于对照：
+这些 EMA 参数支持运行时修改。例如暂时关闭上相机滤波用于对照：
 
 ```bash
-ros2 param set /left_camera/green_light_detector center_filter.enabled false
+ros2 param set /top_camera/green_light_detector center_filter.enabled false
 ```
 
 持久设置写入 `src/dart_bringup/config/green_light_detector.yaml`。对照中心算法或采集原始
 抖动时，将 `center_filter.enabled` 设为 `false`。检测结果统一通过 `detection` 发布。
 
-当前相机清单将 `00DA1923275` 配置为左相机，将 `00DA1923281` 配置为右相机。
-部署前必须确认实机序列号、左右安装位置和对应标定文件一致。
+当前相机清单将 `00DA1923275` 配置为上相机，将 `00DA1923281` 配置为下相机。
+部署前必须确认实机序列号、上下安装位置和对应标定文件一致。
 
 相机内参的图像尺寸必须与实际发布分辨率一致。双目外参来自 `dart_description` 发布的 TF；
 修改相机安装位置后，应同步更新机器人描述中的安装变换，而不是在双目 YAML 中添加独立外参。
+上下安装要求 TF 提供 `launcher_frame` 到 `top_camera_optical_frame`、
+`bottom_camera_optical_frame` 的真实光心位置与朝向。当前 `dart_description` 使用
+`vertical-stereo` 分支，两台相机直接安装在 `launcher_frame` 下；模型光心间距约 0.47096 m，
+同时存在前后偏移和高度差，安装外参仍需按实机标定复核。
+相机或图像旋转由实际光学坐标关系决定，不交换检测中心的 x/y。
+仅移动相机且镜头、焦距和原始图像模式未变时，可复用并复核单目内参；双目外参需要重新确定。
+使用安装约束标定时，还需同步 `third_party/stereo_calib/configs/installation.json` 的安装几何。
+机器人描述默认发布机械模型；场景分析使用 `dart_description` 的 `mode:=scene team:=red/blue`
+入口。安装偏移定义在 URDF 中，主项目已移除不再生效的 `site_file` 入口及场地 YAML。
 
 ## 主要话题与接口
 
 | Topic | 类型 | 说明 |
 | --- | --- | --- |
-| `/left_camera/image_raw`、`/right_camera/image_raw` | `sensor_msgs/msg/Image` | 左右原始图像 |
-| `/left_camera/camera_info`、`/right_camera/camera_info` | `sensor_msgs/msg/CameraInfo` | 与图像同时间戳的相机参数 |
-| `/left_camera/detection`、`/right_camera/detection` | `dart_interfaces/msg/GreenLightDetection` | EMA 后的绿灯中心及对应单位视线，供双目节点使用；关闭 EMA 时为原始值 |
-| `/stereo_target` | `dart_interfaces/msg/StereoTarget` | 双目中心坐标系中的三维目标 |
+| `/top_camera/image_raw`、`/bottom_camera/image_raw` | `sensor_msgs/msg/Image` | 上下相机的原始图像 |
+| `/top_camera/camera_info`、`/bottom_camera/camera_info` | `sensor_msgs/msg/CameraInfo` | 与图像同时间戳的相机参数 |
+| `/top_camera/detection`、`/bottom_camera/detection` | `dart_interfaces/msg/GreenLightDetection` | EMA 后的绿灯中心及对应单位视线，供双目节点使用；关闭 EMA 时为原始值 |
+| `/stereo_target` | `dart_interfaces/msg/StereoTarget` | 默认在 `launcher_frame` 中的三维目标，实际参考系见消息头 |
 | `/controller_logger` | `dart_interfaces/msg/ControllerLogger` | 下位机日志包完整业务字段及主机接收时间戳 |
 | `/controller_state` | `dart_interfaces/msg/ControllerState` | 目标模式、飞镖偏角和电机反馈角 |
-| `/aim_command` | `dart_interfaces/msg/AimCommand` | 离轨点水平参考系中的偏转角、水平距离和有符号垂直高度差 |
+| `/aim_command` | `dart_interfaces/msg/AimCommand` | 默认相对 `launcher_frame` 的偏转角、水平距离和有符号垂直高度差 |
 | `/joint_states` | `sensor_msgs/msg/JointState` | 校正后的发射架关节角 |
 
 消息中的 `center_x_px`、`center_y_px` 为输入图像坐标系中未去畸变的亚像素中心，
@@ -436,13 +444,18 @@ ros2 param set /left_camera/green_light_detector center_filter.enabled false
 x 向前、y 向左、z 向上。所有 yaw 和串口角度均使用弧度，并以向左为正。
 
 双目使用三维视线最近点中点估计绿灯中心。
+该算法支持水平、竖直及斜向基线；两路输入参数统一使用 `top_*`、`bottom_*`。
 `StereoTarget.ray_gap_m` 为两条空间视线最近点的间距；`min_ray_angle_deg` 限制三维交会锐角，
 同时排除平行和反平行退化；`max_camera_range_m` 限制估计点到任一相机光心的空间距离。
 `max_ray_gap_m` 限制两条视线最近点的间距，默认 0.1 m，需根据实机数据验证。
 双目 `position` 是三维估计，`distance` 和 `yaw` 是其在双目参考系中的派生量。
 
-瞄准默认转换到 `ballistic_reference_frame`：原点与 `dart_release_link` 一致，轴与
-`launcher_frame` 对齐，不带离轨方向的俯仰角。当前模型假设底座水平且机构只有 yaw 转动；
+双目和瞄准当前默认使用 `launcher_frame`：距离和高度差均相对发射架原点。
+如果下位机需要相对离轨点输出，将 `aiming.yaml` 的 `reference_frame` 改为
+`ballistic_reference_frame`，节点会按测量时间转换目标位置；该坐标系原点与
+`dart_release_link` 一致，轴与 `launcher_frame` 对齐，不带离轨方向的俯仰角。
+当前描述中该原点相对发射架偏移为 `[0.2, 0, 0.6]` m，切换参考系会改变输出距离和高度差。
+当前模型假设底座水平且机构只有 yaw 转动；
 底座倾斜时须提供重力对齐的参考系。`horizontal_distance_m = hypot(x, y)`（可经过距离校正，
 当前系数为恒等映射），`vertical_difference_m = z`，向上为正，允许负数和零。
 测量目标为绿灯中心；高度差原样透传，yaw 补偿只作用于偏转角。
@@ -458,15 +471,17 @@ x 向前、y 向左、z 向上。所有 yaw 和串口角度均使用弧度，并
 | 0 | header | `0xA5` |
 | 1 | state | `0=CLOSED`、`1=VALID`、`2=INVALID` |
 | 2–5 | yaw_rad | IEEE 754 float32，小端，弧度，向左为正 |
-| 6–9 | horizontal_distance_m | float32 小端，离轨点到绿灯的水平距离，米 |
-| 10–13 | vertical_difference_m | float32 小端，绿灯相对离轨点的垂直高度差，米，向上为正 |
+| 6–9 | horizontal_distance_m | float32 小端，瞄准参考系原点到绿灯的水平距离，米 |
+| 10–13 | vertical_difference_m | float32 小端，绿灯相对瞄准参考系原点的垂直高度差，米，向上为正 |
 | 14–15 | CRC16 | 前 14 字节的校验，小端；初值 `0xffff`，反射多项式 `0x8408`，无最终异或 |
 
 只有 `VALID` 的几何字段有效，其他状态下三个浮点字段全部清零。
-输入重算要求 TF 中包含与录制时离轨位置一致的 `ballistic_reference_frame`，
-其轴方向与水平发射架参考系对齐。PlotJuggler 布局提供偏转角、水平距离和垂直高度差曲线。
+输入重算要求包内 TF 包含所配置的双目与瞄准参考系以及上下相机光学坐标系，
+变换必须与录制时的安装一致。当前回放入口使用上下相机话题；旧左右相机录包需使用匹配的旧版
+配置和回放入口，不能仅通过重命名话题将旧安装数据当作新安装数据。
+PlotJuggler 布局提供偏转角、水平距离和垂直高度差曲线。
 
-视觉派生消息始终保留原始测量时间：单目检测继承图像时间戳，双目目标使用左右图像
+视觉派生消息始终保留原始测量时间：单目检测继承图像时间戳，双目目标使用上下图像
 时间戳的中间时刻，瞄准指令继续继承该双目测量时间。定时重复发布不会刷新时间戳；没有
 任何观测来源的 `INVALID` 指令使用零时间戳。因此串口的新鲜度检查衡量的是完整视觉链路
 的数据年龄，而不是瞄准节点最近一次发布时间。
@@ -474,7 +489,7 @@ x 向前、y 向左、z 向上。所有 yaw 和串口角度均使用弧度，并
 可以通过以下命令观察关键输出：
 
 ```bash
-ros2 topic echo /left_camera/detection
+ros2 topic echo /top_camera/detection
 ros2 topic echo /stereo_target
 ros2 topic echo /aim_command
 ```
@@ -497,7 +512,7 @@ ros2 topic echo /diagnostics
 - `measurement_to_aim_*_ms`：T0 到瞄准结果；
 - `measurement_to_serial_write_*_ms`：T0 到有效指令写入串口完成。
 
-双目诊断还发布左右输入频率、配对频率、配对时间差、未配对计数和各几何拒绝原因计数；
+双目诊断还发布上下相机输入频率、配对频率、配对时间差、未配对计数和各几何拒绝原因计数；
 瞄准诊断发布当前输出状态及最近失效原因；串口诊断发布收发频率、最近收发时间、CRC、
 解码、读写和重连计数。延迟暂不设置固定告警阈值，应先根据实机数据确定正常范围。
 
@@ -516,7 +531,7 @@ ros2 topic echo /diagnostics
 | 瞄准指令 | `CLOSED=0`、`VALID=1` | `INVALID=2` |
 
 - `CLOSED` 表示清理后的绿色掩膜中没有轮廓，由视觉结果推断舱门关闭。
-- 双目仅在左右相机都为 `DETECTED` 且 TF 与几何检查通过时产生 `VALID`。
+- 双目仅在上下相机都为 `DETECTED` 且 TF 与几何检查通过时产生 `VALID`。
 - 瞄准仅在目标和控制器状态未超时且 TF 可用时产生 `VALID`。
 - 非有效状态下的位置、角度和距离字段均为零。
 - 串口线协议使用 `0=CLOSED`、`1=VALID`、`2=INVALID`；下位机必须使用相同语义。
@@ -541,12 +556,29 @@ uv sync --python /usr/bin/python3 --group analysis
 uv run --group analysis jupyter lab analysis/notebooks/target_impact_analysis.ipynb
 ```
 
+完整执行 notebook 并重新生成报告与四张图片（需先加载 ROS 的 Xacro 环境）：
+
+```bash
+source /opt/ros/jazzy/setup.bash
+.venv/bin/python analysis/run_target_impact_analysis.py --export-report
+.venv/bin/python -m unittest discover -s analysis -p test_stereo_precision.py -v
+```
+
 该 notebook 从 `dart_description` 的 URDF 读取离轨点、固定发射方向和装甲板上表面，分析
 绿灯到装甲板的常量 yaw 补偿可行性、滑轨全行程瞄准结果、固定目标时 yaw 误差造成的
 板面撞击位移，以及视觉角度和双目距离精度。板面使用 `u/v` 坐标，其中 `u` 对应
 `armor_link` local `y`，`v` 对应 local `z`；所有几何参数以当前 URDF 为准。
+像素噪声分析读取两台相机各自的 K/D，通过完整三维安装变换和空间射线求交传播到
+`launcher_frame` 中的 yaw、水平距离和高度差，不采用平行双目的水平视差近似。
 计算结果、图表、适用边界和工程建议汇总在
 [`飞镖视觉瞄准几何与误差传播分析报告`](docs/reports/dart_vision_aiming_geometry_error_analysis/report.md)。
+
+构建并加载工作区后，可运行包含真实描述模型、瞄准参考系转换和 PTY 串口的端到端回归：
+
+```bash
+source install/setup.bash
+python3 -m unittest discover -s src/dart_bringup/test -p test_geometry_pipeline.py -v
+```
 
 Python 直接依赖统一声明在 `pyproject.toml`，完整解析版本由 `uv.lock` 锁定。修改依赖时使用
 `uv add --group dev <package>` 或 `uv add --group analysis <package>`，并提交同步更新的两个文件。
