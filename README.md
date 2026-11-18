@@ -332,6 +332,7 @@ ros2 launch dart_bringup replay.launch.py \
 | 路径 | 内容 |
 | --- | --- |
 | `camera/cameras.yaml` | 相机启用状态、序列号、曝光、帧率及标定文件引用 |
+| `camera/stereo_capture.yaml` | 双相机标定采集的话题映射、配对时差、新鲜度及预览设置 |
 | `camera/calibration/*.yaml` | 各相机内参和畸变参数 |
 | `green_light_detector.yaml` | 按目标模式切换的颜色分割、几何、亮度和掩膜清理参数 |
 | `stereo_triangulator.yaml` | 上下相机话题、配对时差和双目几何限制 |
@@ -425,6 +426,76 @@ ros2 param set /top_camera/green_light_detector center_filter.enabled false
 不能直接填安装关节的位置。该工具的默认配置是通用示例，部署前必须按实际安装替换。
 机器人描述默认发布机械模型；场景分析使用 `dart_description` 的 `mode:=scene team:=red/blue`
 入口。安装偏移定义在 URDF 中，主项目已移除不再生效的 `site_file` 入口及场地 YAML。
+
+## 双相机标定采集
+
+使用配对采集窗口替代两路 rqt 手动保存。该入口只启动相机驱动和采集工具：
+
+```bash
+source /opt/ros/jazzy/setup.bash
+colcon build --symlink-install --packages-select dart_bringup
+source install/setup.bash
+ros2 launch dart_bringup stereo_capture.launch.py
+```
+
+窗口中 `S` 请求保存一组新图像，`T` 选择训练集，`V` 选择验证集，`Q` 或 Esc 退出。
+先摆好标定板并保持相机与板稳定，再按 `S`；请求只接受按键之后的新帧，缓存中的旧帧不会被保存。
+当前默认要求两路图像时间差不超过 10 ms、年龄不超过 200 ms，等待 3 秒仍未凑齐则整组失败。
+窗口显示两路图像年龄、主机收帧时间差、当前划分、保存数量及失败原因。
+
+相机驱动已在其他入口运行时，使用 `start_driver:=false` 避免重复连接。可通过
+`output_root:=/absolute/path` 指定保存根目录，`params_file:=...` 覆盖采集参数；相机驱动清单
+通过 `cameras_file:=...` 指定。默认配置将 `camera_1` 映射到上相机、`camera_2` 映射到下相机。
+相机保持 `trigger_mode: off`，曝光和增益配置来自驱动清单。
+
+每次运行创建独立目录，默认位于运行目录下的 `captures/stereo_YYYYMMDD_HHMMSS_<id>/`：
+
+```text
+camera_1/000001.png
+camera_2/000001.png
+metadata/000001.json
+pairs.csv
+session.json
+```
+
+PNG 保留原始分辨率和 8-bit 像素，窗口缩放不影响保存结果；RGB 输入仅转换通道顺序后写入 PNG。
+两张图片和元数据写入成功后才更新 `pairs.csv`，失败不会生成半组清单记录，也不会覆盖已有图片。
+同一 session 的分辨率、编码或 frame ID 改变时拒绝保存，需启动新 session。
+
+元数据保存原图时间戳、收帧时间差、相机映射、可用的 CameraInfo，以及采样时的驱动曝光、增益等
+参数。驱动参数是异步快照，保存其采样时间；它不是逐帧曝光事件记录。默认要求能够读取驱动参数，
+并核对配置的序列号；外部图像源没有参数服务时，可在自定义 YAML 中设置
+`require_driver_parameters: false`。采集不要求已有有效 K/D，尚未标定的 CameraInfo 可以正常保存。
+
+无图形界面时关闭预览，通过服务请求保存；服务返回的是实际保存结果：
+
+```bash
+ros2 launch dart_bringup stereo_capture.launch.py preview_enabled:=false
+ros2 service call /stereo_capture/capture std_srvs/srv/Trigger "{}"
+ros2 param set /stereo_capture split validation
+```
+
+当前实现使用自由运行图像的主机收帧时间配对，不能据此保证曝光同步；适用于静止标定采集。
+运动标定仍需要协调软件触发或共同硬件触发。训练和验证应分别采集独立板姿态，避免把相邻帧随机
+分到两组。
+
+退出采集后，在 `stereo_calib` 目录中使用该 session 的清单，生成独立的观测和模型：
+
+```bash
+cd third_party/stereo_calib
+CAPTURE_SESSION=/absolute/path/to/captures/stereo_YYYYMMDD_HHMMSS_id
+python3 -m stereo_calib detect --manifest "$CAPTURE_SESSION/pairs.csv" \
+  --output "$CAPTURE_SESSION/observations.json" --previews "$CAPTURE_SESSION/detections"
+python3 -m stereo_calib calibrate-mono --camera camera_1 \
+  --observations "$CAPTURE_SESSION/observations.json" --output "$CAPTURE_SESSION/camera_1.json"
+python3 -m stereo_calib calibrate-mono --camera camera_2 \
+  --observations "$CAPTURE_SESSION/observations.json" --output "$CAPTURE_SESSION/camera_2.json"
+python3 -m stereo_calib calibrate-stereo --observations "$CAPTURE_SESSION/observations.json" \
+  --camera-1-model "$CAPTURE_SESSION/camera_1.json" --camera-2-model "$CAPTURE_SESSION/camera_2.json" \
+  --output "$CAPTURE_SESSION/stereo.json"
+python3 -m stereo_calib validate --observations "$CAPTURE_SESSION/observations.json" \
+  --stereo "$CAPTURE_SESSION/stereo.json" --output "$CAPTURE_SESSION/validation.json"
+```
 
 ## 主要话题与接口
 

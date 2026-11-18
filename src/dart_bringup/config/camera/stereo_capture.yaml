@@ -1,0 +1,26 @@
+/**:
+  ros__parameters:
+    output_root: captures
+    preview_enabled: true
+    preview_scale: 0.5
+    split: train
+    # 静止标定的主机收帧时间配对阈值，不代表曝光同步精度。
+    max_pair_delta_s: 0.01
+    max_image_age_s: 0.2
+    capture_timeout_s: 3.0
+    queue_size: 10
+    # 真实相机采集时核对驱动参数，并记录曝光、增益等参数快照。
+    # 外部图像源没有驱动参数服务时可设为 false。
+    require_driver_parameters: true
+    camera_1:
+      image_topic: /top_camera/image_raw
+      camera_info_topic: /top_camera/camera_info
+      frame_id: top_camera_optical_frame
+      serial_number: 00DA1923275
+      driver_node: /top_camera/driver
+    camera_2:
+      image_topic: /bottom_camera/image_raw
+      camera_info_topic: /bottom_camera/camera_info
+      frame_id: bottom_camera_optical_frame
+      serial_number: 00DA1923281
+      driver_node: /bottom_camera/driver

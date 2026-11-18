@@ -26,7 +26,10 @@ install(
 
 install(
   PROGRAMS scripts/record_bag.py scripts/prepare_replay_bag.py scripts/play_replay_bag.py
+           scripts/capture_stereo_pairs.py
   DESTINATION lib/${PROJECT_NAME}
 )
+
+install(FILES scripts/stereo_capture_core.py DESTINATION lib/${PROJECT_NAME})
 
 ament_package()
