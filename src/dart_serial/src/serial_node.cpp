@@ -312,6 +312,8 @@ void SerialNode::processFrame(const std::vector<std::uint8_t>& frame) {
     message.target_mode = packet->target_mode;
     message.dart_offset_rad = packet->dart_offset_rad;
     message.launcher_yaw_rad = packet->launcher_yaw_rad;
+    message.string_l_length = packet->string_l_length;
+    message.string_r_length = packet->string_r_length;
     receive_publisher_->publish(message);
 
     sensor_msgs::msg::JointState state;

@@ -6,6 +6,27 @@
 
 using namespace dart_vision::serial;
 
+TEST(ReceivePacketProtocol, DecodesStringLengthsAndRejectsBadFrames) {
+    // header, mode, offset=0.5, yaw=-2, left=1.25, right=2.5, CRC16.
+    std::vector<std::uint8_t> bytes{
+        0x5A, 1, 0, 0, 0, 0x3F, 0, 0, 0, 0xC0,
+        0, 0, 0xA0, 0x3F, 0, 0, 0x20, 0x40, 0, 0};
+    appendCRC16(bytes.data(), bytes.size());
+    EXPECT_EQ(packetSizeFromHeader(0x5A), 20U);
+    const auto packet = decodeReceivePacket(bytes);
+    ASSERT_TRUE(packet.has_value());
+    EXPECT_EQ(packet->target_mode, 1);
+    EXPECT_FLOAT_EQ(packet->dart_offset_rad, 0.5F);
+    EXPECT_FLOAT_EQ(packet->launcher_yaw_rad, -2.0F);
+    EXPECT_FLOAT_EQ(packet->string_l_length, 1.25F);
+    EXPECT_FLOAT_EQ(packet->string_r_length, 2.5F);
+    bytes.back() ^= 0xff;
+    EXPECT_FALSE(decodeReceivePacket(bytes).has_value());
+    bytes.resize(13); // Old receive frame length.
+    appendCRC16(bytes.data(), bytes.size());
+    EXPECT_FALSE(decodeReceivePacket(bytes).has_value());
+}
+
 TEST(SendPacketProtocol, EncodesExplicitLittleEndianGeometryAndCrc) {
     SendPacket packet;
     packet.state = 1;
