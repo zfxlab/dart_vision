@@ -11,3 +11,6 @@ uint8 target_mode
 float32 dart_offset_rad
 # 电机反馈角，单位为弧度，向左为正；串口节点校零后发布 JointState。
 float32 launcher_yaw_rad
+# 左右弓弦长度，单位为毫米（mm）。
+float32 string_l_length
+float32 string_r_length

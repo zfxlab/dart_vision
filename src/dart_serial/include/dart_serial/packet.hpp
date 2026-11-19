@@ -19,9 +19,10 @@ inline constexpr std::uint8_t kLoggerPacketHeader = 0xD5;
 struct ReceivePacket {
     std::uint8_t header{kReceivePacketHeader};
     std::uint8_t target_mode{}; ///< 0前哨站 1固定 2随机固定 3随机移动 4末端移动
-    std::uint8_t dart_number{}; ///< 飞镖编号（临时）
     float dart_offset_rad{};    ///< 飞镖的偏转角，向左为正
     float launcher_yaw_rad{};   ///< yaw轴电机位置，向左为正
+    float string_l_length{};    ///< 左弓弦长度，单位为毫米（mm）
+    float string_r_length{};    ///< 右弓弦长度，单位为毫米（mm）
     std::uint16_t crc{};
 } __attribute__((packed));
 
@@ -60,14 +61,18 @@ struct LoggerPacket {
     std::uint16_t checksum{};
 } __attribute__((packed));
 
-static_assert(sizeof(ReceivePacket) == 13, "ReceivePacket protocol size mismatch");
+static_assert(sizeof(ReceivePacket) == 20, "ReceivePacket protocol size mismatch");
 static_assert(offsetof(ReceivePacket, target_mode) == 1,
               "ReceivePacket target_mode offset mismatch");
-static_assert(offsetof(ReceivePacket, dart_offset_rad) == 3,
+static_assert(offsetof(ReceivePacket, dart_offset_rad) == 2,
               "ReceivePacket dart_offset_rad field mismatch");
-static_assert(offsetof(ReceivePacket, launcher_yaw_rad) == 7,
+static_assert(offsetof(ReceivePacket, launcher_yaw_rad) == 6,
               "ReceivePacket launcher_yaw_rad offset mismatch");
-static_assert(offsetof(ReceivePacket, crc) == 11, "ReceivePacket CRC offset mismatch");
+static_assert(offsetof(ReceivePacket, string_l_length) == 10,
+              "ReceivePacket left length offset mismatch");
+static_assert(offsetof(ReceivePacket, string_r_length) == 14,
+              "ReceivePacket right length offset mismatch");
+static_assert(offsetof(ReceivePacket, crc) == 18, "ReceivePacket CRC offset mismatch");
 static_assert(sizeof(SendPacket) == 16, "SendPacket protocol size mismatch");
 static_assert(offsetof(SendPacket, state) == 1, "SendPacket state offset mismatch");
 static_assert(offsetof(SendPacket, yaw_rad) == 2, "SendPacket yaw_rad offset mismatch");
